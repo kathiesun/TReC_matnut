@@ -1,0 +1,312 @@
+
+R version 3.2.2 (2015-08-14) -- "Fire Safety"
+Copyright (C) 2015 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> setwd("/nas02/home/k/y/kys6/matnut/src")
+> source("~/matnut/src/matnut/parArgs.R")
+> 
+> sumFunc <- "~/matnut/src/matnut/summary_functions.R"
+> source(sumFunc) 
+Loading required package: coda
+Linked to JAGS 3.4.0
+Loaded modules: basemod,bugs
+Loading required package: Matrix
+Loading required package: lme4
+
+Attaching package: ‘lmerTest’
+
+The following object is masked from ‘package:lme4’:
+
+    lmer
+
+The following object is masked from ‘package:stats’:
+
+    step
+
+Warning messages:
+1: replacing previous import by ‘ggplot2::unit’ when loading ‘Hmisc’ 
+2: replacing previous import by ‘ggplot2::arrow’ when loading ‘Hmisc’ 
+3: replacing previous import by ‘scales::alpha’ when loading ‘Hmisc’ 
+> 
+> cov_short <- readRDS("~/Data/matnut_outputs/cov_short_data.rds")
+> library(car)
+> 
+> 
+> ######## Define function to run in accumulator
+> 
+> # remove missing
+> origPhen <- grep("ENS", colnames(cov_short$df))
+> missing <- which(colSums(cov_short$df[, origPhen]) == 0)
+> if(length(missing)>0) cov_short$df <- cov_short$df[, -missing]
+> 
+> # rank all other genes
+> origPhen <- grep("ENS", colnames(cov_short$df))
+> noPhen <- setdiff(seq(1, ncol(cov_short$df), by=1), origPhen)
+> allrank <- cbind( cov_short$df[,noPhen],
++                    t(apply(cov_short$df[,origPhen], 1, function(x) rank(x, ties.method = "min")/length(!is.na(x)))) )
+> 
+> indvariable="~ -1 + Diet + (PO + 0 | RIX) + (PO + 0|Diet:RIX)"
+> 
+> runAll <- function(rankdata, noPhen, phenInd, encoded, indvariable, tryLam=1){
++   system.time ({
++     datause <- rankdata[,c(noPhen, phenInd)]
++     fitLMER2 <- BC.model(y.mat=datause[,-noPhen], data=datause,
++                          indvariable=indvariable, 
++                          transformParams=getMatnutTransformParams(tryLam = tryLam, normd = T))
++     
++     lmerSum <- lmer.getDecodedSummary(lmerOb=fitLMER2, formula=indvariable, phenotypes=fitLMER2$phenotypes)
++     
++     fitLMER2$JAGSformula <- lmer.to.jags.form(indvariable)
++     jagsFit2 <- runJagsModels_cov(datalist=datause, 
++                                  testLMER = fitLMER2, encoded=encoded, phenotype=fitLMER2$phenotypes, n.iter=200000)
++     
++     #jagsSum <- list()
++     #all.y <- matrix(NA, nrow=nrow(datause), ncol=length(fitLMER2$y.transform))
++     #for(i in 1:length(fitLMER2$y.transform)){
++     #  all.y[,i] <- fitLMER2$y.transform[[i]]
++     #  all.mcmc <- mcmc.stack(jagsFit2[[i]]$fit)
++     #  jagsSum[[i]] <- jags.getDecodedSummary(all.mcmc, encoded)
++     #}
++     
++     #allSummary <- list(lmer=lmerSum, jags=jagsSum)
++     
++     #allSummary$compare <- sapply(1:length(lmerSum), function(x) data.frame(compareSummary(allSummary$lmer[[x]],allSummary$jags[[x]])), 
++     #                             simplify = F)
++     return(lmerSum)   #allSummary)
++   })
++ }
+> 
+> 
+> ######### Define accumulator
+> 
+> 
+> tmpdir = "~/job.tmp/"
+> 
+> system.type = "killdevil"
+> 
+> accum = parallel$get.cluster.accum(system.type       = system.type,
++                                    func = runAll,
++                                    sharedVariables   = list(rankdata=allrank, 
++                                                             noPhen=noPhen, 
++                                                             encoded=cov_short$encoded,
++                                                             indvariable=indvariable),
++                                    filesToSource     = sumFunc,
++                                    batchSize         = 1,
++                                    timeLimit.hours   = .15,
++                                    cpuMemLimit.GB    = .5,
++                                    coresPerJob       = 1,
++                                    maxSimulJobs      = 100,
++                                    systemOpts        = c(),
++                                    outdir            = tmpdir,
++                                    retryFailing      = T,
++                                    saveProp          = T)
+> 
+> perJob = 500
+> total = length(origPhen)
+> 
+> for (i in 1:2){    #seq(1:(floor(total/perJob)+1))){
++   a = (perJob * (i-1)) + length(noPhen)+1
++   b = a+perJob - 1
++   if(i==(floor(total/perJob)+1)) b = total + length(noPhen)
++   phenInd <- seq(a,b,by=1)
++   #test <- runAll(rankdata=allrank, noPhen=noPhen, phenInd=phenInd, encoded=cov_short$encoded, 
++   #               indvariable=indvariable)
++   #saveRDS(test, paste(output_dir, paste0("rnaseq_allRIX_",i,".rds"), sep="/"))
++   
++   accum$addCall(list(phenInd=phenInd))
++ }
+[1] "R CMD BATCH --no-save --no-restore '--args  ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/prop/prop_1 -I~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/in/in_1' ./parallel/jobscript.R ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/ROut/out_1.ROut"
+[1] "R CMD BATCH --no-save --no-restore '--args  ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/prop/prop_2 -I~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/in/in_2' ./parallel/jobscript.R ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/ROut/out_2.ROut"
+> 
+> ######### Store outputs
+> outputs = accum$runAll()
+[1] "running all jobs; temp files for debugging stored in ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30"
+Group   (-G) : kelkar_pi
+Project (-P) : kelkar_pi
+Memory Limit (-M) : 1 GB
+Group   (-G) : kelkar_pi
+Project (-P) : kelkar_pi
+Memory Limit (-M) : 1 GB
+[1] "submitted all jobs started at 2017-12-04_17:30:32"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "done with jobs"
+elapsed time is 739.612000 seconds 
+[1] "********************"
+[1] "Failed entire batch:"
+[1] "2017-12-04_17:30:32.1"
+[1] "R CMD BATCH --no-save --no-restore '--args  ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/prop/prop_1 -I~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/in/in_1' ./parallel/jobscript.R ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/ROut/out_1.ROut"
+[1] "********************"
+[1] "********************"
+[1] "Failed entire batch:"
+[1] "2017-12-04_17:30:32.2"
+[1] "R CMD BATCH --no-save --no-restore '--args  ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/prop/prop_2 -I~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/in/in_2' ./parallel/jobscript.R ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/ROut/out_2.ROut"
+[1] "********************"
+[1] "failures:2"
+Group   (-G) : kelkar_pi
+Project (-P) : kelkar_pi
+Memory Limit (-M) : 1 GB
+Group   (-G) : kelkar_pi
+Project (-P) : kelkar_pi
+Memory Limit (-M) : 1 GB
+[1] "submitted all jobs started at 2017-12-04_17:42:51"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 2 jobs are finished"
+[1] "sleeping untill the remaining 1 jobs are finished"
+[1] "done with jobs"
+elapsed time is 755.552000 seconds 
+[1] "********************"
+[1] "Failed entire batch:"
+[1] "2017-12-04_17:42:51.1"
+[1] "R CMD BATCH --no-save --no-restore '--args  ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/prop/prop_1 -I~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/in/in_1' ./parallel/jobscript.R ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/ROut/out_1.ROut"
+[1] "********************"
+[1] "********************"
+[1] "Failed entire batch:"
+[1] "2017-12-04_17:42:51.2"
+[1] "R CMD BATCH --no-save --no-restore '--args  ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/prop/prop_2 -I~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/in/in_2' ./parallel/jobscript.R ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/ROut/out_2.ROut"
+[1] "********************"
+Warning messages:
+1: running command 'grep -l  'Successfully completed.' ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/jobsubmit.outfiles/2017-12-04_17:30:32.1.job.out' had status 1 
+2: running command 'grep -l  'Successfully completed.' ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/jobsubmit.outfiles/2017-12-04_17:30:32.2.job.out' had status 1 
+3: running command 'grep -l  'Successfully completed.' ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/jobsubmit.outfiles/2017-12-04_17:42:51.1.job.out' had status 1 
+4: running command 'grep -l  'Successfully completed.' ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/jobsubmit.outfiles/2017-12-04_17:42:51.2.job.out' had status 1 
+> harvested = accum$getAllOutputs(outputs, removeFailing = T)
+Error in readChar(con, 5L, useBytes = TRUE) : cannot open the connection
+In addition: Warning message:
+In readChar(con, 5L, useBytes = TRUE) :
+  cannot open compressed file '/nas02/home/k/y/kys6/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/out/out_1', probable reason 'No such file or directory'
+[1] "failing batch: ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/out/out_1"
+Error in readChar(con, 5L, useBytes = TRUE) : cannot open the connection
+In addition: Warning message:
+In readChar(con, 5L, useBytes = TRUE) :
+  cannot open compressed file '/nas02/home/k/y/kys6/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/out/out_2', probable reason 'No such file or directory'
+[1] "failing batch: ~/job.tmp///tmp/RtmpRg5Knr_runAll_2017-12-04_17:30:30/out/out_2"
+> 
+> 
+> #outputs = accum$runAll()
+> 
+> #iter = accum$getOutputIterator(outputs)
+> 
+> output_dir <- "~/Data/matnut_outputs/rna"
+> saveRDS(harvested, paste(output_dir, "rnaseq_allRIX.rds", sep="/"))
+> #counter=1
+> 
+> #while(iter$hasNext())
+> #{
+> #  item = iter$nextItem()
+> #  saveRDS(item, paste(output_dir, paste0("rnaseq_allRIX_",counter,".rds"), sep="/"))
+> #  counter=counter+1
+> #}
+> 
+> proc.time()
+    user   system  elapsed 
+  10.891    5.777 1505.624 

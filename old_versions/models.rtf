@@ -1,0 +1,67 @@
+sig2inv ~ dgamma(0.001,0.001)\\n
+\par \hich\af37\dbch\af31505\loch\f37 tauRIX ~ dgamma(0.001,0.001)\\n
+\par \hich\af37\dbch\af31505\loch\f37 for (i in 1:nRIX)\{ RIX[i] ~ dnorm(0, tauRIX) \}\\n
+\par \hich\af37\dbch\af31505\loch\f37 tauDietRIX ~ dgamma(0.001,0.001)\\n
+\par \hich\af37\dbch\af31505\loch\f37 for (i in 1:nDietRIX)\{ DietRIX[i] ~ dnorm(0, tauDietRIX) \}
+\par \\\hich\af37\dbch\af31505\loch\f37 nfor (i in 1:1)\{ \\n 
+\par \hich\af37\dbch\af31505\loch\f37 grand_mu ~ dunif(0, 1000) \} \\n 
+\par \hich\af37\dbch\af31505\loch\f37 for (i in 1:N)\{ \\n 
+\par \hich\af37\dbch\af31505\loch\f37 mu[i,1] <- RIX[indRIX[i]]+DietRIX[indDietRIX[i]]+grand_mu \\n 
+\par \hich\af37\dbch\af31505\loch\f37 y[i]  ~ dnorm(mu[i,1], sig2inv) \\n 
+\par \}\\\hich\af37\dbch\af31505\loch\f37 n
+\par \}\hich\af37\dbch\af31505\loch\f37 "
+\par --------------
+\par \hich\af37\dbch\af31505\loch\f37 model \{\\n 
+\par \hich\af37\dbch\af31505\loch\f37 sig2inv ~ dgamma(0.001,0.001)\\n
+\par \hich\af37\dbch\af31505\loch\f37 tauRIX ~ dgamma(0.001,0.001)\\n
+\par \hich\af37\dbch\af31505\loch\f37 for (i in \hich\af37\dbch\af31505\loch\f37 1:nRIX)\{ 
+\par \hich\af37\dbch\af31505\loch\f37 betaRIX[i]
+\par \hich\af37\dbch\af31505\loch\f37 unsc.sqRIX[i] <- pow(betaRIX[i], 2)/tauRIX
+\par \hich\af37\dbch\af31505\loch\f37 unsc.sqRIX[i] ~ dchisq(1) \}\\n
+\par \hich\af37\dbch\af31505\loch\f37 tauDietRIX ~ dgamma(0.001,0.001)\\n
+\par \hich\af37\dbch\af31505\loch\f37 for (i in 1:nDietRIX)\{ sqDietRIX[i] ~ tauDietRIX * dchisq(1) \}
+\par \\\hich\af37\dbch\af31505\loch\f37 ngrand_mu ~ dunif(0, 2*grand_mean) \} \\n 
+\par \hich\af37\dbch\af31505\loch\f37 for (i in 1:N)\{ \\n 
+\par \hich\af37\dbch\af31505\loch\f37 mu\hich\af37\dbch\af31505\loch\f37 [i,1] <- betaRIX[indRIX[i]]+sqrt(sqDietRIX[indDietRIX[i]])+grand_mu \\n 
+\par \hich\af37\dbch\af31505\loch\f37 y[i]  ~ dnorm(mu[i,1], sig2inv) \\n 
+\par \}\\\hich\af37\dbch\af31505\loch\f37 n
+\par \}\hich\af37\dbch\af31505\loch\f37 "
+\par 
+\par -----
+\par \hich\af37\dbch\af31505\loch\f37 model \{\\n 
+\par \hich\af37\dbch\af31505\loch\f37 sig2inv ~ d,gamma(0.001,0.001)\\n
+\par \hich\af37\dbch\af31505\loch\f37 tauRIX ~ dgamma(0.001,0.001)\\n
+\par \hich\af37\dbch\af31505\loch\f37 for (i in 1:nRIX)\{\hich\af37\dbch\af31505\loch\f37  RIX[i] ~ dnorm(0, tauRIX) \}\\n
+\par \hich\af37\dbch\af31505\loch\f37 tauDietRIX ~ dgamma(0.001,0.001)\\n
+\par \hich\af37\dbch\af31505\loch\f37 for (i in 1:nDietRIX)\{ DietRIX[i] ~ dnorm(0, tauDietRIX) \}\\n
+\par \hich\af37\dbch\af31505\loch\f37 grand_mu ~ dunif(0,  26.2220689655172 ) \\n for (i in 1:N)\{ \\n mu[i,1] <- RIX[indRIX[i]]+DietRIX[indDietRIX[i]]+grand_mu \\n 
+\par \hich\af37\dbch\af31505\loch\f37 y[i] \hich\af37\dbch\af31505\loch\f37  ~ dnorm(mu[i,1], sig2inv) \\n \}\\n\}
+\par 
+\par 
+\par 
+\par }}
+model \{
+\par  sig2inv ~ dgamma(0.001,0.001)
+\par tauDamID ~ dgamma(0.001,0.001)
+\par for (i in 1:nDamID)\{ 
+\par  betaDamID[i] ~ dnorm(0, tauDamID) \}
+\par tauRIX ~ dgamma(0.001,0.001)
+\par for (i in 1:nRIX)\{ 
+\par  betaRIX[i] ~ dnorm(0, tauRIX) \}
+\par tauDietRIX ~ dgamma(0.001,0.001)
+\par for (i in 1:nDietRIX)\{ 
+\par  betaDietRIX[i] ~ dnorm(0, tauDietRIX) \}
+\par tauPORIX ~ dgamma(0.001,0.001)
+\par for (i in 1:nPORIX)\{ 
+\par  betaPORIX[i] ~ dnorm(0, tauPORIX) \}
+\par tauPODietRIX ~ dgamma(0.001,0.001)
+\par for (i in 1:nPODietRIX)\{ 
+\par  betaPODietRIX[i] ~ dnorm(0, tauPODietRIX) \}
+\par for (i in 1:nDiet)\{ betaDiet[i] ~ dnorm(0, 1e-08) \}  
+\par for (i in 1:N)\{ 
+\par mu[i,1] <- betaDamID[indDamID[i]]+betaRIX[indRIX[i]]+betaDietRIX[indDietRIX[i]]+PO[i]*betaPORIX[indPORIX[i]]+PO[i]*betaPODietRIX[indPODietRIX[i]]+betaDiet[indDiet[i]] 
+\par  y[i]  ~ dnorm(mu[i,1], sig2inv) 
+\par  \}
+\par \}
+\par }
+\par }

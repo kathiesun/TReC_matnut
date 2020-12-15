@@ -1,0 +1,107 @@
+
+R version 3.2.2 (2015-08-14) -- "Fire Safety"
+Copyright (C) 2015 The R Foundation for Statistical Computing
+Platform: x86_64-pc-linux-gnu (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> library(rjags)
+Loading required package: coda
+Linked to JAGS 3.4.0
+Loaded modules: basemod,bugs
+> library(coda)
+> library(ggplot2)
+> library(data.table)
+> library(lmerTest)
+Loading required package: Matrix
+Loading required package: lme4
+
+Attaching package: ‘lmerTest’
+
+The following object is masked from ‘package:lme4’:
+
+    lmer
+
+The following object is masked from ‘package:stats’:
+
+    step
+
+Warning messages:
+1: replacing previous import by ‘ggplot2::unit’ when loading ‘Hmisc’ 
+2: replacing previous import by ‘ggplot2::arrow’ when loading ‘Hmisc’ 
+3: replacing previous import by ‘scales::alpha’ when loading ‘Hmisc’ 
+> 
+> setwd("/nas02/home/k/y/kys6/matnut/src")
+> 
+> source("./matnut/summary_functions.R")
+> 
+> library(cmdline)
+> sim <- cmdline.integer("sim")
+> 
+> ###### Read in data
+> dataSource <- file.path("~/Data/matnut_outputs")
+> matnut <- readRDS(file.path(dataSource,'matnut_data.rds'))
+> 
+> ####################
+> #   Run function   #
+> ####################
+> runAll <- function(df,
++                    output_dir,
++                    tryLam=1, 
++                    perJob=500,
++                    sim) { 
++ 
++   myPhen <- makeSummary(datalist=df, phenotype=df$ptypes[sim], 
++                         randvar=c("DamID", "RIX", "Diet:RIX"), fixvar="Diet", POvar=c("RIX", "Diet:RIX"),
++                         tryLam=c(-1, 0, .25, .33, .5, 1, 2, 3), contrasts=T, 
++                         chains=2, n.adapt=20000, n.iter=50000)
++   
++   saveRDS(myPhen, paste0(output_dir,"/modelFit_phen",sim,".rds"))				
++ }
+> 
+> runAll(matnut, output_dir=paste(dataSource, "par_out",sep="/"), 
++ 	tryLam=c(-1, 0, .25, .33, .5, 1, 2, 3), sim=sim)
+[1] "everything worked: 1 phen 1"
+[1] "everything worked: 2 phen 1"
+[1] "everything worked: 3 phen 1"
+[1] "everything worked: 4 phen 1"
+[1] "everything worked: 5 phen 1"
+[1] "everything worked: 6 phen 1"
+[1] "everything worked: 7 phen 1"
+[1] "everything worked: 8 phen 1"
+Compiling model graph
+   Resolving undeclared variables
+   Allocating nodes
+   Graph Size: 6297
+
+Initializing model
+
+There were 24 warnings (use warnings() to see them)
+> 
+> 
+> #for (i in 1:length(names(testPhen))){
+> #  testName <- names(testPhen)[i]
+> #  for(j in 1:20){
+> #    phenName <- names(myPhen[[j]][["allSummary"]])
+> #    if(j == 2) testPhen[[testName]][[phenName]]<- myPhen[[j]][[testName]] 
+> #    else testPhen[[testName]][[phenName]]<- myPhen[[j]][[testName]][[phenName]]
+> #  }
+> #}
+> 
+> 
+> 
+> proc.time()
+    user   system  elapsed 
+2866.948    0.561 2870.470 
