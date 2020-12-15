@@ -1,7 +1,7 @@
 library(tidyverse)
 library(rstan)
 
-setwd("C:/Users/Kathie/models_matnut/src")
+setwd("C:/Users/Kathie/TReC_matnut/src")
 
 source("lmer_functions_rna.R")
 source("jags_functions.R")
@@ -13,7 +13,7 @@ source("summary_functions.R")
 dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
 matnut <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
 
-stanlist <- lapply(matnut$ptypes[5:20], function(x) stanSum(df=matnut$df, encoded=matnut$encoded, phenotype=x, 
+stanlist <- lapply(matnut$ptypes[7], function(x) stanSum(df=matnut$df, encoded=matnut$encoded, phenotype=x, 
                    randvar=c("DamID", "RIX", "DietRIX"), fixvar="Diet", POvar=c("RIX", "Diet:RIX"),
                    tryLam=c(-1, 0, .25, .33, .5, 1, 2, 3), normd=T, 
                    chains=1, iter=2000))
@@ -49,7 +49,7 @@ stanSum <- function(df, phenotype, encoded=NULL,
   y.mat = bcObject$y.transform[[1]]
   y <- as.vector(y.mat[!is.na(y.mat)])
   N <- length(y)
-  df = df[-which(is.na(y.mat)),]
+  if(length(which(is.na(y.mat))) > 0) df = df[-which(is.na(y.mat)),]
   x_fx = data.frame(df[,fixvar])
   colnames(x_fx) = fixvar
   x_rd = data.frame(df[,randvar])
