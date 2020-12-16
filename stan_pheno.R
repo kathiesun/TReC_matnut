@@ -4,94 +4,71 @@ library(rstan)
 setwd("C:/Users/Kathie/TReC_matnut/src")
 
 source("lmer_functions_rna.R")
-source("jags_functions.R")
+source("stan_pheno_functions.R")
 source("prediction_functions.R")
 source("summary_functions.R")
 
 
 ###### Read in data
-dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
-matnut <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
+#dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
+dir <- "/nas/depts/006/valdar-lab/users/sunk/"
+matnut = read.csv(file.path(dir,'matnut_main/AllMice_GeneExpression_SSupdated_11.27.19.csv'))
+#matnut <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
+genes = read.csv("deseq2/priorityTryGenes_16dec2020.csv")
 
+
+
+matnut = matnut %>% select(-contains("X"))
+gene_count <- read.csv(file.path(dir,'/hisat2_stringtie_fasta/stringtie/round2/gene_count_matrix.csv'))
+#gene_count <- read.csv(file.path(dir,'/trec/gene_count_matrix.csv'))
+
+colnames(gene_count)[1] = "gene_id"
+gene_count$Gene.ID = do.call("rbind",(strsplit(as.character(gene_count$gene_id), "[|]")))[,1]
+gene_count$Gene.Name = do.call("rbind", (strsplit(as.character(gene_count$gene_id), "[|]")))[,2]
+
+samples = colnames(gene_count)[grep("Pup", colnames(gene_count))]
+matnut$ID = paste0("Pup.ID_",matnut$Pup.ID)
+matnut$Diet = gsub(" $", "", matnut$Diet)
+matnut$RIX = gsub("a|b","",matnut$Reciprocal)
+matnut$PO = ifelse(gsub("[0-9]","",matnut$Reciprocal) == "a", 0.5, -0.5)
+matnut$DietRIX = gsub(" ", ".",paste0(matnut$Diet, matnut$RIX))
+matnut$DietRIXPOq = paste0(matnut$DietRIX,"_",matnut$PO)
+matnut$RIX = factor(matnut$RIX, levels = c(1:4,6:10))
+map = read.csv(file.path(dir,"mini/combined_map_cs_gbrs_allmarkers_17mar2020.csv"))
+
+annot = read.table(file.path(dir, "mm10/ref_sequence/Mus_musculus.GRCm38.96.gtf"), skip=5, fill=T)
+#annot = read.table(file.path(dir, "matnut_main/Mus_musculus.GRCm38.96.gtf"), skip=5, fill=T)
+
+annot_genes = annot %>% filter(V15 == "gene_name") %>%
+  dplyr::select(one_of(paste0("V",c(1,4,5,7,10,16)))) %>%
+  distinct()
+
+colnames(annot_genes) = c("Chr","Start","End","Strand","Gene.ID","Gene.Name")
+annot_genes = annot_genes %>% mutate(Start = as.numeric(paste(Start)), End = as.numeric(paste(End)))
+# 
+if(length(which(duplicated(annot_genes$Gene.Name))) > 0){
+  annot_genes = annot_genes[-which(duplicated(annot_genes$Gene.Name)),]
+}
+
+annot_genes = annot_genes[which(annot_genes$Gene.ID %in% gene_count$Gene.ID |annot_genes$Gene.Name %in% gene_count$Gene.Name),]
+
+
+regions_list = readRDS(file.path(dir,"mini/seg_regions_by_genotyping_perRIX_kmerBased_23nov2019.rds"))
+haplofiles = list.files(file.path(dir,"mini/pup_haplo_blocks_by_CC_parent_dec2019"), 
+                        pattern="haploBlocks.rds", full.names = T)
+phased_par_CC_haplotypes = lapply(haplofiles, readRDS)
+tmp = do.call("rbind", strsplit(haplofiles, "_"))
+names(phased_par_CC_haplotypes) = tmp[,ncol(tmp)-1]
+
+maxn = floor(nrow(annot_genes)/500)
+its_1 = ((it-1)*500)+1
+its_2 = ifelse(it==maxn, nrow(annot_genes), it*500)
+
+print(paste(its_1,its_2))
 stanlist <- lapply(matnut$ptypes[7], function(x) stanSum(df=matnut$df, encoded=matnut$encoded, phenotype=x, 
                    randvar=c("DamID", "RIX", "DietRIX"), fixvar="Diet", POvar=c("RIX", "Diet:RIX"),
                    tryLam=c(-1, 0, .25, .33, .5, 1, 2, 3), normd=T, 
                    chains=1, iter=2000))
-
-stanSum <- function(df, phenotype, encoded=NULL, 
-                    tryLam=1, normd=T,
-                    chains=2, iter=10000,
-                    plot=T, contrasts=F,
-                    randvar=NA, fixvar=NA, POvar=NA){
-  
-  formulas = getFormulas(fixvar, randvar, POvar)
-  
-  if(length(phenotype) > 1) {
-    use <- which(colSums(df[,colnames(df) %in% phenotype], na.rm = T) != 0)
-    use <- unique(c(use, which(apply(df[,colnames(df) %in% phenotype], 2, var) != 0) ))
-    phenotype <- phenotype[use]
-  }
-  y.mat <- data.frame(df[, phenotype])
-  df <- data.frame(df)
-  colnames(y.mat) <- phenotype
-  
-  bcObject <- BC.model(y.mat = y.mat, data=df, indvariable=formulas$lmerform, 
-                       transformParams = getMatnutTransformParams(tryLam = tryLam, normd = normd))
-  transf <- data.frame(lambda = bcObject$lambda,  
-                       pval = bcObject$p.val)
-  
-  form <- formulaWrapper$parseCovariateString(paste(formulas$jagsform))
-  
-  if(any(duplicated(form$fixef))){
-    form$fixef[[which(duplicated(form$fixef))]] <- NULL
-  }
-  
-  y.mat = bcObject$y.transform[[1]]
-  y <- as.vector(y.mat[!is.na(y.mat)])
-  N <- length(y)
-  if(length(which(is.na(y.mat))) > 0) df = df[-which(is.na(y.mat)),]
-  x_fx = data.frame(df[,fixvar])
-  colnames(x_fx) = fixvar
-  x_rd = data.frame(df[,randvar])
-  colnames(x_rd) = randvar
-  x_fx = do.call("cbind", 
-                 sapply(1:ncol(x_fx), function(i) encoded$Index[match(x_fx[,i], encoded$Level)], 
-                        simplify=F))
-  colnames(x_fx) = fixvar
-  
-  x_rd = do.call("cbind", 
-                 sapply(1:ncol(x_rd), function(i) encoded$Index[match(x_rd[,i], encoded$Level)], 
-                        simplify=F))
-  colnames(x_rd) = randvar
-  modelMat = model.matrix(~ Diet + RIX + DietRIX, df)
-  x_d  = modelMat[,grep("[^0-9]$", colnames(modelMat))]
-  x_s  = modelMat[,grep("^RIX", colnames(modelMat))]
-  x_sd = modelMat[,grep("^DietRIX", colnames(modelMat))]
-
-  standat <-  list(N       = length(y),
-                   y       = y, 
-                   K_d     = ncol(x_d),
-                   K_s     = ncol(x_s),
-                   K_sd    = ncol(x_sd),
-                   x_d     = x_d,
-                   x_s     = x_s,
-                   x_sd    = x_sd,
-                   SPO     = as.vector(df$PO))
-  
-  fileName <- "../stan_SPO.stan"
-  stan_code <- readChar(fileName, file.info(fileName)$size)
-  #cat(stan_code)
-  
-
-  warmup=round((floor((iter*0.25)/(iter/10))*(iter/10)))
-  thin=iter/1000
-  
-  stan_code <- readChar(fileName, file.info(fileName)$size)
-  try(resStan <- stan(model_code = stan_code, data = standat,
-                      chains = chains, iter = iter, warmup = warmup, thin = thin))
-  
-  return(resStan)
-}
 
 
   stanmcmc<- As.mcmc.list(resStan)
