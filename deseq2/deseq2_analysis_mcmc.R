@@ -6,11 +6,11 @@ library(hyper2)
 library(BradleyTerryScalable)
 library(coda)
 
-setwd("C:/Users/Kathie/rna_seq/deseq2")
+setwd("C:/Users/Kathie/TReC_matnut/deseq2")
 dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)/"
 source("deseq2_functions.R")
 source("manhattan_plot.R")
-source("../kmerSearch/bradley_terry_mcmc_2.R")
+source("bradley_terry_mcmc_2.R")
 
 
 ######### read in data ##########
