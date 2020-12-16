@@ -1,0 +1,14 @@
+model {
+  for(i in 1:length(y_gk)){
+    y_gk[i] ~ dbin(mu_p[indP[i]], N_gk[i])
+  }
+
+for(p in 1:nP){
+  mu_p[p] <- exp(eta[p])/(1+exp(eta[p]))
+  eta[p] ~ dnorm(theta[p], tau2)
+  theta[p] <- b0
+}
+b0 = log(mu_r/(1-mu_r))
+mu_r ~ dbeta(1,1)
+tau2 ~ dunif(0,1000)
+}
