@@ -75,3 +75,39 @@ stanSum <- function(df, phenotype, encoded=NULL,
   return(resStan)
 }
 
+
+
+getFormulas = function(fixvar, randvar, POvar){
+  effectlist <- list()
+  ind <- 1
+  
+  if(!any(is.na(fixvar))){
+    effectlist[[ind]] <- vector()
+    for(i in 1:length(fixvar)){
+      effectlist[[ind]] <- c(effectlist[[ind]], fixvar[i])
+    }
+    ind=ind+1
+  }
+  if(!any(is.na(randvar))){
+    effectlist[[ind]] <- vector()
+    for(i in 1:length(randvar)){
+      effectlist[[ind]] <- c(effectlist[[ind]], paste0("(1 | ", randvar[i], ")"))
+    }
+    ind=ind+1
+  }
+  
+  if(!any(is.na(POvar))){   
+    effectlist[[ind]] <- vector()
+    for(i in 1:length(POvar)){
+      effectlist[[ind]] <- c(effectlist[[ind]], paste0("(PO + 0 | ", POvar[i], ")"))
+    }
+  }
+  fitLMER <- list()
+  lmerform <- paste("~ -1 +", paste(unlist(effectlist), collapse="+"))
+  jagsform <- lmer.to.jags.form(lmerform)
+  
+  return(list(lmerform=lmerform, jagsform=jagsform))
+}
+
+
+
