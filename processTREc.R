@@ -1,18 +1,43 @@
 dir = "/nas/depts/006/valdar-lab/users/sunk/trec"
 library(rjags)
-
-files = list.files(dir, full.names=T)
+library(rstan)
+files = list.files(dir, pattern = "priorityGenes", full.names=T)
 
 allKeep = list()
 for(i in 1:length(files)){
 	dat = readRDS(files[i])
-	mins = unlist(lapply(dat, function(x) summary(as.mcmc.list(x$multimp$fit$mu_a_abs))[[2]][1]))
-	keep = as.vector(which(mins > 0.01))
-	kdat = lapply(keep, function(x) dat[[x]])
-	names(kdat) = names(dat)[keep]
-	allKeep = c(allKeep, kdat)
-}
 
+	stanmcmc<- lapply(dat, As.mcmc.list)
+	summcmc <- lapply(stanmcmc, summary)
+	keep_params <- lapply(summcmc, function(x) 
+			      which(apply(x[[2]], 1, function(y)
+				    ifelse((y[1] > 0 & y[5] > 0) | (y[1] < 0 & y[5] < 0), T, F))))
+	keep_params <- lapply(keep_params, function(x) 
+			      x[intersect(intersect(grep("sigma",names(x), invert=T),
+						    grep("beta",names(x))), grep("raw",names(x), invert=T))])
+	param_df = sapply(1:length(summcmc), function(j){ 
+		          param = rownames(summcmc[[j]][[1]])[keep_params[[j]]] 
+			  if(length(param) < 2){
+				  tmp = data.frame(t(c(summcmc[[j]][[1]][keep_params[[j]],], summcmc[[j]][[2]][keep_params[[j]],])))  
+			  } else {
+				  tmp = data.frame(cbind(summcmc[[j]][[1]][keep_params[[j]],], summcmc[[j]][[2]][keep_params[[j]],])) 
+			  }
+			  if(nrow(tmp)>0 & ncol(tmp)>0){
+			  	tmp$param = param
+			  	tmp$gene = names(summcmc)[[j]]
+			  }
+			  tmp	
+	})
+	param_df = do.call("rbind",param_df)
+	rownames(param_df) = NULL
+	allKeep[[i]] = list(summary = summcmc, sig_params = param_df)
+	#mins = unlist(lapply(dat, function(x) summary(as.mcmc.list(x$multimp$fit$mu_a_abs))[[2]][1]))
+	#keep = as.vector(which(mins > 0.01))
+	#kdat = lapply(keep, function(x) dat[[x]])
+	#names(kdat) = names(dat)[keep]
+	#allKeep = c(allKeep, kdat)
+}
+all_gene_sum = do.call("rbind", lapply(allKeep, function(x) x$sig_params))
 ######################################
 
 
