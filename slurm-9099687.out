@@ -309,3 +309,22 @@ Chain 2: Iteration: 3000 / 6000 [ 50%]  (Sampling)
 Chain 2: Iteration: 3600 / 6000 [ 60%]  (Sampling)
 Chain 2: Iteration: 4200 / 6000 [ 70%]  (Sampling)
 Chain 2: Iteration: 4800 / 6000 [ 80%]  (Sampling)
+Chain 2: Iteration: 5400 / 6000 [ 90%]  (Sampling)
+Chain 2: Iteration: 6000 / 6000 [100%]  (Sampling)
+Chain 2: 
+Chain 2:  Elapsed Time: 45.7 seconds (Warm-up)
+Chain 2:                341.63 seconds (Sampling)
+Chain 2:                387.33 seconds (Total)
+Chain 2: 
+
+SAMPLING FOR MODEL '2f8b09025defe902a4bedd6307763397' NOW (CHAIN 3).
+Chain 3: 
+Chain 3: Gradient evaluation took 0 seconds
+Chain 3: 1000 transitions using 10 leapfrog steps per transition would take 0 seconds.
+Chain 3: Adjust your expectations accordingly!
+Chain 3: 
+Chain 3: 
+Chain 3: Iteration:    1 / 6000 [  0%]  (Warmup)
+Chain 3: Iteration:  600 / 6000 [ 10%]  (Warmup)
+Chain 3: Iteration: 1200 / 6000 [ 20%]  (Warmup)
+Chain 3: Iteration: 1201 / 6000 [ 20%]  (Sampling)
