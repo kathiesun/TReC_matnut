@@ -18,7 +18,7 @@ dir <- "/nas/depts/006/valdar-lab/users/sunk/"
 matnut = read.csv(file.path(dir,'matnut_main/AllMice_GeneExpression_SSupdated_11.27.19.csv'))
 #matnut <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
 genes = read.csv("../deseq2/priorityTryGenes_16dec2020.csv", header=F)
-
+genes = genes$V1[-which(genes$V1 == "Gm23935")]
 
 
 matnut = matnut %>% select(-contains("X"))
@@ -60,7 +60,7 @@ if(length(which(duplicated(annot_genes$Gene.Name))) > 0){
 
 annot_genes = annot_genes[which(annot_genes$Gene.ID %in% gene_count$Gene.ID |annot_genes$Gene.Name %in% gene_count$Gene.Name),]
 
-annot_genes = annot_genes %>% filter(Gene.Name %in% genes$V1)
+annot_genes = annot_genes %>% filter(Gene.Name %in% genes)
 
 t_counts = data.frame(t(gene_count %>% filter(Gene.Name %in% annot_genes$Gene.Name) %>%
 			select(contains("Pup.ID")))) 
@@ -84,13 +84,13 @@ its_2 = ifelse(it==maxn, nrow(annot_genes), it*10)
 
 print(paste(its_1,its_2))
 
-stanlist <- lapply(as.character(genes$V1)[its_1:its_2], function(x) 
+stanlist <- lapply(as.character(genes)[its_1:its_2], function(x) 
 		   
-		   
+		   for(x in as.character(genes)[its_1:its_2]){
 		   tmp = stanSum(df=matnut_use, encoded=encoded, phenotype=x, 
                    randvar=c("RIX", "DietRIX"), fixvar="Diet", POvar=c("RIX", "DietRIX"),
                    tryLam=c(-1, 0, .25, .33, .5, 1, 2, 3), normd=T, 
-                   chains=3, iter=6000)
+                   chains=1, iter=2000)}
 		   )
 names(stanlist) = as.character(genes$V1)[its_1:its_2]
 saveRDS(stanlist, paste0(dir,"/trec/tot_expr_priorityGenes_",it,"_16dec2020.rds"))
