@@ -22,6 +22,8 @@ source("./matnut/summary_functions.R")
 ###### Read in data
 dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
 matnut <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
+matnut_jags = readRDS(file.path(dir, "phenotype_analysis/out/complete_phen_model.rds"))
+matnut_stan = readRDS(file.path(dir, "phenotype_analysis/out/stan20PhenOut_15dec2020.rds"))
 
 ####################
 #   Run function   #
@@ -59,6 +61,49 @@ for(phen in c(1,2,4,13,18)) {      # 1:length(matnut$ptypes)
 #  c(sapply(1:9, function(j) 
 #   mean(fit_stan[[1]]@sim$samples[[1]][[paste0("p[",j,",",i,"]")]]))) ))
 
+summcmc <- lapply(matnut_stan, function(x) if(!is.na(nrow(x))) summary(As.mcmc.list(x)))
+
+sum_stan = sapply(1:length(summcmc),function(i){
+  tmp = NULL
+  if(!is.null(names(summcmc[[i]]))){
+    tmp = data.frame(do.call("cbind",list(summcmc[[i]][[1]],summcmc[[i]][[2]])))
+    tmp$phen = names(summcmc)[[i]]
+    tmp$param = rownames(tmp)
+    tmp = tmp[-grep("raw",tmp$param),]
+    tmp$Level = tmp$Variable = ""
+    tmp$Level[grep("SPO", tmp$param)] = encoded$Level[which(encoded$Variable == "PORIX")][c(2:length(grep("SPO", tmp$param)),1)]
+    tmp$Level[grep("_s[[1-9]", tmp$param)] = encoded$Level[which(encoded$Variable == "RIX")][c(2:length(grep("_s[[1-9]", tmp$param)),1)]
+    tmp$Level[grep("_d[[1-9]", tmp$param)] = encoded$Level[which(encoded$Variable == "Diet")][c(2:length(grep("_d[[1-9]", tmp$param)),1)]
+    tmp$Level[grep("_sd[[1-9]", tmp$param)] = encoded$Level[which(encoded$Variable == "DietRIX")][c(2:length(grep("_sd[[1-9]", tmp$param)),1)]
+    tmp$Level[grep("_sdp[[1-9]", tmp$param)] = encoded$Level[which(encoded$Variable == "PODietRIX")][c(2:length(grep("_sdp[[1-9]", tmp$param)),1)]
+    tmp$Variable[grep("SPO", tmp$param)] = "PORIX"
+    tmp$Variable[grep("_s[[1-9]", tmp$param)] = "RIX"
+    tmp$Variable[grep("_d[[1-9]", tmp$param)] = "Diet"
+    tmp$Variable[grep("_sd[[1-9]", tmp$param)] = "DietRIX"
+    tmp$Variable[grep("_sdp[[1-9]", tmp$param)] = "PODietRIX"
+  }
+  tmp
+})
+names(sum_stan) = names(summcmc)
+plot_tmp = sum_stan$WeightPND21
+plot_tmp = plot_tmp %>% filter(Level!= "")
+
+ <- plot.inter.ci(med=plot_tmp$X50., mu=plot_tmp$Mean, 
+                          hpd.narrow = cbind(plot_tmp$X25., plot_tmp$X75.), 
+                          hpd.wide = cbind(plot_tmp$X2.5., plot_tmp$X97.5.), 
+                          names=plot_tmp$Level, order=3,
+                          col.midvals="white", pch.midvals="|", addline = F, wide=T, 
+                          grouped=plot_tmp$Variable, ordered=F)
+comPlot <- jagsPlot$plot + geom_point(data=lmerSumTemp, aes(x=Level, y=Intercept), col="red", size=3) +
+  ggtitle(paste("LMER and JAGS comparison for", phenotype))
+
+
+
+
+param_df = do.call("rbind",param_df)
+rownames(param_df) = NULL
+allKeep[[i]] = list(summary = summcmc, sig_params = param_df)
+#mins = unlist(lapply(dat, function(x) summary(as.mcmc.list(x$multi
 
 mcmc_compare_plot_list = sapply(1:length(matched_results), function(i) 
   compare_muA_stan_jags(results_object = matched_results[[i]], phen=names(matched_results)[[i]]),
