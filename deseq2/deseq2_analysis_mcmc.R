@@ -14,6 +14,7 @@ source("bradley_terry_mcmc_2.R")
 
 
 ######### read in data ##########
+
 rem_seg_dds = readRDS(file.path(dir, "de_results/dds_lst_string_remSeg_exLowCounts_19feb2020.rds"))
 rem_seg_res = compare_diets_PO(dds_lst=rem_seg_dds, fdrtool_adjust=T, 
                                adjust_p=F, ref_diet = "Standard")

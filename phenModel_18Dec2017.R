@@ -85,16 +85,18 @@ sum_stan = sapply(1:length(summcmc),function(i){
   tmp
 })
 names(sum_stan) = names(summcmc)
-plot_tmp = sum_stan$WeightPND21
-plot_tmp = plot_tmp %>% filter(Level!= "")
+plot_tmp = sum_stan[[2]]
+plot_tmp = plot_tmp %>% filter(Variable == "PORIX")
 
- <- plot.inter.ci(med=plot_tmp$X50., mu=plot_tmp$Mean, 
+stan_plot <- plot.inter.ci(med=plot_tmp$X50., mu=plot_tmp$Mean, 
                           hpd.narrow = cbind(plot_tmp$X25., plot_tmp$X75.), 
                           hpd.wide = cbind(plot_tmp$X2.5., plot_tmp$X97.5.), 
-                          names=plot_tmp$Level, order=3,
+                          names=plot_tmp$Level, order=3, 
                           col.midvals="white", pch.midvals="|", addline = F, wide=T, 
                           grouped=plot_tmp$Variable, ordered=F)
-comPlot <- jagsPlot$plot + geom_point(data=lmerSumTemp, aes(x=Level, y=Intercept), col="red", size=3) +
+stan_plot$plot
+matnut_jags$plot[[2]]
+comPlot <- stan_plot$plot + geom_point(data=lmerSumTemp, aes(x=Level, y=Intercept), col="red", size=3) +
   ggtitle(paste("LMER and JAGS comparison for", phenotype))
 
 
