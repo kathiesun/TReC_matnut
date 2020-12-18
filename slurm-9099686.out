@@ -248,3 +248,23 @@ Chain 3: Iteration: 3600 / 6000 [ 60%]  (Sampling)
 Chain 3: Iteration: 4200 / 6000 [ 70%]  (Sampling)
 Chain 3: Iteration: 4800 / 6000 [ 80%]  (Sampling)
 Chain 3: Iteration: 5400 / 6000 [ 90%]  (Sampling)
+Chain 3: Iteration: 6000 / 6000 [100%]  (Sampling)
+Chain 3: 
+Chain 3:  Elapsed Time: 72.81 seconds (Warm-up)
+Chain 3:                440.7 seconds (Sampling)
+Chain 3:                513.51 seconds (Total)
+Chain 3: 
+boundary (singular) fit: see ?isSingular
+[1] "everything worked: 1 phen 1"
+boundary (singular) fit: see ?isSingular
+[1] "everything worked: 2 phen 1"
+boundary (singular) fit: see ?isSingular
+[1] "everything worked: 3 phen 1"
+boundary (singular) fit: see ?isSingular
+[1] "everything worked: 4 phen 1"
+boundary (singular) fit: see ?isSingular
+[1] "everything worked: 5 phen 1"
+boundary (singular) fit: see ?isSingular
+[1] "everything worked: 6 phen 1"
+[1] "everything worked: 7 phen 1"
+[1] "everything worked: 8 phen 1"

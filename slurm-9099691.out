@@ -331,3 +331,6 @@ Chain 3:
 Chain 3: 
 Chain 3: Iteration:    1 / 6000 [  0%]  (Warmup)
 Chain 3: Iteration:  600 / 6000 [ 10%]  (Warmup)
+Chain 3: Iteration: 1200 / 6000 [ 20%]  (Warmup)
+Chain 3: Iteration: 1201 / 6000 [ 20%]  (Sampling)
+Chain 3: Iteration: 1800 / 6000 [ 30%]  (Sampling)
