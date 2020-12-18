@@ -84,48 +84,14 @@ its_2 = ifelse(it==maxn, nrow(annot_genes), it*10)
 
 print(paste(its_1,its_2))
 
-
-
-getFormulas = function(fixvar, randvar, POvar){
-  effectlist <- list()
-  ind <- 1
-  
-  if(!any(is.na(fixvar))){
-    effectlist[[ind]] <- vector()
-    for(i in 1:length(fixvar)){
-      effectlist[[ind]] <- c(effectlist[[ind]], fixvar[i])
-    }
-    ind=ind+1
-  }
-  if(!any(is.na(randvar))){
-    effectlist[[ind]] <- vector()
-    for(i in 1:length(randvar)){
-      effectlist[[ind]] <- c(effectlist[[ind]], paste0("(1 | ", randvar[i], ")"))
-    }
-    ind=ind+1
-  }
-  
-  if(!any(is.na(POvar))){   
-    effectlist[[ind]] <- vector()
-    for(i in 1:length(POvar)){
-      effectlist[[ind]] <- c(effectlist[[ind]], paste0("(PO + 0 | ", POvar[i], ")"))
-    }
-  }
-  fitLMER <- list()
-  lmerform <- paste("~ -1 +", paste(unlist(effectlist), collapse="+"))
-  jagsform <- lmer.to.jags.form(lmerform)
-  
-  return(list(lmerform=lmerform, jagsform=jagsform))
-}
-
-
-
-
-
-stanlist <- lapply(as.character(genes$V1)[its_1:its_2], function(x) stanSum(df=matnut_use, encoded=encoded, phenotype=x, 
+stanlist <- lapply(as.character(genes$V1)[its_1:its_2], function(x) 
+		   
+		   
+		   tmp = stanSum(df=matnut_use, encoded=encoded, phenotype=x, 
                    randvar=c("RIX", "DietRIX"), fixvar="Diet", POvar=c("RIX", "DietRIX"),
                    tryLam=c(-1, 0, .25, .33, .5, 1, 2, 3), normd=T, 
-                   chains=3, iter=6000))
+                   chains=3, iter=6000)
+		   )
 names(stanlist) = as.character(genes$V1)[its_1:its_2]
 saveRDS(stanlist, paste0(dir,"/trec/tot_expr_priorityGenes_",it,"_16dec2020.rds"))
 #  stanmcmc<- As.mcmc.list(resStan)

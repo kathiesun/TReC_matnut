@@ -1,4 +1,4 @@
-
+source("boxcox_functions.R")
 
 stanSum <- function(df, phenotype, encoded=NULL, 
                     tryLam=1, normd=T,
@@ -15,6 +15,7 @@ stanSum <- function(df, phenotype, encoded=NULL,
   }
   y.mat <- data.frame(df[, phenotype])
   df <- data.frame(df)
+  phenotype = ifelse(length(grep("^[0-9]",phenotype)>0), paste0("X",phenotype), phenotype)
   colnames(y.mat) <- phenotype
   
   bcObject <- BC.model(y.mat = y.mat, data=df, indvariable=formulas$lmerform, 
