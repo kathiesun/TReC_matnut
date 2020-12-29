@@ -1,6 +1,10 @@
-library(tidyverse)
+library(dplyr)
+library(ggplot2)
 library(rstan)
 library(edgeR)
+library(DESeq2)
+library(sva)
+
 setwd("C:/Users/Kathie/TReC_matnut/src")
 
 source("lmer_functions_rna.R")
@@ -48,24 +52,184 @@ tmp[46] = "Snhg14_v2"
 colnames(t_counts) = tmp 
 t_counts$ID = unlist(as.character(rownames(t_counts)))
 matnut_use = right_join(matnut, t_counts, "ID")
+colData = matnut[match(colnames(counts),matnut$ID),c("Breeding.Batch","Behavior.Batch","RIX","Reciprocal","Diet",
+                 "Dam.ID","ID","PO","DietRIX","DietRIXPOq")]
+
+#######################################################
 
 d0 <- DGEList(counts)
-d0 <- calcNormFactors(d0)
-d0
+d0$samples = cbind(d0$samples, colData)
+samplenames = d0$samples$ID
+
+cpm0 <- cpm(d0)
+lcpm0 <- cpm(d0, log=TRUE)
+
+L <- mean(d0$samples$lib.size) * 1e-6
+M <- median(d0$samples$lib.size) * 1e-6
+c(L, M)
+summary(lcpm0)
+
+table(rowSums(d0$counts==0)==(ncol(d0$counts)))
+
+keep.exprs <- filterByExpr(d0, group="Reciprocal")
+d1 <- d0[keep.exprs,, keep.lib.sizes=FALSE]
+dim(d0)
+dim(d1)
+d2 = d1[-grep("MSTRG", rownames(d1)),, keep.lib.sizes=FALSE]
+dim(d2)
+
+cutoff <- 1
+drop <- which(apply(cpm(d2), 1, max) < cutoff)
+d3 <- d2
+if(length(drop) > 0) d3 <- d2[-drop,] 
+dim(d3)
 
 
-cutoff <- 2
-drop <- which(apply(cpm(d0), 1, max) < cutoff)
-d <- d0
-if(length(drop) > 0) d <- d0[-drop,] 
-dim(d)
+lcpm.cutoff <- log2(10/M + 2/L)
+library(RColorBrewer)
+nsamples <- ncol(d0)
+col <- brewer.pal(nsamples, "Paired")
+par(mfrow=c(1,2))
+plot(density(lcpm0[,1]), col=col[1], lwd=2, ylim=c(0,1.15), las=2, main="", xlab="")
+title(main="A. Raw data", xlab="Log-cpm")
+abline(v=lcpm.cutoff, lty=3)
+for (i in 2:nsamples){
+  den <- density(lcpm0[,i])
+  lines(den$x, den$y, col=col[i], lwd=2)
+}
+#legend("topright", samplenames, text.col=col, bty="n")
+lcpm <- cpm(d3, log=TRUE)
+plot(density(lcpm[,1]), col=col[1], lwd=2, ylim=c(0,0.2), las=2, main="", xlab="")
+title(main="B. Filtered data", xlab="Log-cpm")
+abline(v=lcpm.cutoff, lty=3)
 
-snames <- colnames(counts) # Sample names
+for (i in 2:nsamples){
+  den <- density(lcpm[,i])
+  lines(den$x, den$y, col=col[i], lwd=2)
+}
+#legend("topright", samplenames, text.col=col, bty="n")
 
-mm = model.matrix(~ 0 + Diet + RIX + PO*RIX + DietRIX + PO*DietRIX, matnut[match(snames,matnut$ID),])
+snames <- colnames(d3$counts) # Sample names
+d3 <- calcNormFactors(d3)
 
-y <- voom(d, mm, plot = T)
-############################################
+
+############## looking at PO only #################
+
+
+d3$samples$RRIX = d3$samples$RIX
+
+mm = model.matrix(~ 0 + Reciprocal, d3$samples) 
+mm[,grep("RRIX", colnames(mm))] = apply(mm[,grep("RRIX", colnames(mm))], 2, function(x) x * d3$samples$PO)
+cont.wt = makeContrasts(
+  "Reciprocal10a-Reciprocal10b",
+  "Reciprocal1a-Reciprocal1b",
+  "Reciprocal2a-Reciprocal2b",
+  "Reciprocal3a-Reciprocal3b",
+  "Reciprocal4a-Reciprocal4b",
+  "Reciprocal6a-Reciprocal6b",
+  "Reciprocal7a-Reciprocal7b",
+  "Reciprocal8a-Reciprocal8b",
+  "Reciprocal9a-Reciprocal9b",
+  levels = mm
+)
+#cont.wt = cont.wt * 0.5
+y <- voom(d3, mm, plot = T)
+vfit = lmFit(y, mm)
+vfit <- contrasts.fit(vfit, contrasts=cont.wt)
+efit <- eBayes(vfit)
+plotSA(efit, main="Final model: Mean-variance trend")
+
+
+summary(decideTests(efit))
+
+
+############# RIX, diet, PO, and interactions model ############# 
+RIX = colData$RIX
+RRIX = d3$samples$RRIX
+PO = d3$samples$PO 
+Diet = d3$samples$Diet
+contrasts(RIX) = contr.sum(9)
+contrasts(Diet) = contr.sum(4)
+mm = model.matrix(~ 0 + RIX + Diet + PO:RIX)    #+ RIX:Diet
+y <- voom(d3, mm, plot = T)
+vfit = lmFit(y, mm)
+efit <- eBayes(vfit)
+plotSA(efit, main="Final model: Mean-variance trend")
+
+summary(decideTests(efit,p.value=0.1))
+voom_sig = which(unlist(apply(decideTests(efit,p.value=0.1), 1, function(x) any(x[grep("PO",colnames(efit))] != 0))))
+##################  DESeq2  ##########################
+colData = colData %>% arrange(RIX, Diet, PO)
+RIX = colData$RIX
+RRIX = colData$RIX
+Diet = colData$Diet
+PO = colData$PO
+DietRIX = colData$DietRIX
+contrasts(RIX) = contr.sum(9)
+contrasts(RRIX) = contr.sum(9)
+contrasts(Diet) = contr.sum(4)
+contrasts(DietRIX) = contr.sum(length(unique(colData$DietRIX)))
+mm = model.matrix(~ 0 + RIX + Diet + PO:RIX)    
+
+all.zero <- apply(mm, 2, function(x) all(x==0))
+idx <- which(all.zero)
+if(length(idx) > 0) mm <- mm[,-idx]
+
+rownames(colData) = colData$ID
+cts = counts[,match(colData$ID, colnames(counts))]
+all(rownames(colData) == colnames(cts))
+dds <- DESeqDataSetFromMatrix(countData = cts, 
+                              colData = colData,
+                              design = mm)
+
+## pre-filtering
+keep <- rowSums(counts(dds) >= 10) >= 10
+dds <- dds[keep,]
+remove = grep("MSTRG", rownames(counts(dds)))
+if(length(remove) > 0) dds = dds[-remove,]
+
+dds <- estimateSizeFactors(dds)
+dds <- estimateDispersions(dds)
+
+base = "RIX + Diet + PO:RIX"
+dat = counts(dds, normalized=T)
+dat = dat[rowMeans(dat) > 1,]
+mod  <- model.matrix(as.formula(paste("~ 0 +", base)), colData(dds))
+mod0 <- model.matrix(~   1                           , colData(dds))
+svseq <- svaseq(dat, mod, mod0, n.sv = 1)  
+ddssva = dds
+ddssva$SV1 <- svseq$sv[,1]
+  
+design(ddssva) <- as.formula(paste("~ 0 + SV1 +", base))
+dds = ddssva
+
+dds <- DESeq(dds)
+dds = readRDS(file.path(dir,"de_results/deseq_28dec2020.rds"))
+res <- results(dds)
+
+#saveRDS(dds, file.path(dir,"de_results/deseq_28dec2020.rds"))
+
+
+PO_res = resultsNames(dds)[grep("PO", resultsNames(dds))]
+POres_list = lapply(PO_res, function(x) results(dds, name = x))
+POres_Ordered <- lapply(POres_list, function(x) x[order(x$pvalue),])
+sig_genes_list = lapply(POres_Ordered, function(x) rownames(x)[which(x$padj < 0.1)])
+sig_genes_short = lapply(sig_genes_list, function(x) 
+  if(length(grep("Gm|Rik|[.]", x)) > 0) x[-grep("Gm|Rik|[.]", x)])
+deseq_sig = sort(table(unlist(lapply(POres_Ordered, function(x) rownames(x[which(x$padj < 0.1),])))), decreasing = T)
+
+genes = unique(unlist(lapply(sig_genes_short, function(x) x[1:min(5,length(x))])))
+
+ddsPlot = dds
+ddsPlot$PO = factor(ddsPlot$PO)
+plotCts = plotCounts(ddsPlot, gene=sig_genes_short[[1]][3], intgroup=c("PO","RIX","Diet"), returnData = T)
+ggplot(plotCts, aes(x=PO, y=count, col=Diet)) + 
+  geom_point(position = position_jitter(width = 0.15)) + 
+  theme_classic() + 
+  facet_wrap(~RIX)
+
+
+#######################################################
 annot = read.table(file.path(dir, "mm10/ref_sequence/Mus_musculus.GRCm38.96.gtf"), skip=5, fill=T)
 #annot = read.table(file.path(dir, "matnut_main/Mus_musculus.GRCm38.96.gtf"), skip=5, fill=T)
 
@@ -82,7 +246,7 @@ if(length(which(duplicated(annot_genes$Gene.Name))) > 0){
 
 annot_genes = annot_genes[which(annot_genes$Gene.ID %in% gene_count$Gene.ID |annot_genes$Gene.Name %in% gene_count$Gene.Name),]
 
-annot_genes = annot_genes %>% filter(Gene.Name %in% genes$V1)
+#annot_genes = annot_genes %>% filter(Gene.Name %in% genes$V1)
 
 ##############################
 
@@ -136,22 +300,28 @@ saveRDS(stanlist, paste0(dir,"/trec/tot_expr_priorityGenes_",it,"_16dec2020.rds"
 #  lapply(strsplit(varnames(fitJags[[phenotype[i]]]$fit),'[[]'), function(x) x[[1]]))))
 #wantParam <- intersect(paramUse, c(paste(unique(encoded$Variable)), "grand_mu"))
 
-
-dds = DESeqDataSetFromMatrix(countData = counts, colData = matnut[match(snames,matnut$ID),], 
-                             design = ~ RRIX + Diet + PO_cat)    # + Diet:PO)
-countData = countData[rowSums(counts(dds)) >= 10,]
+colData = matnut[match(snames,matnut$ID),c("Breeding.Batch","Behavior.Batch","RIX","Reciprocal","Diet",
+                                           "Dam.ID","ID","PO","DietRIX","DietRIXPOq")]
+rownames(colData) = colData$ID
+dds = DESeqDataSetFromMatrix(countData = counts, colData = colData, 
+                             design = ~ RIX + PO*RIX + Diet)    # + Diet:PO)
+counts = counts[rowSums(counts(dds)) >= 10,]
 dds <- estimateSizeFactors(dds)
 dat = counts(dds, normalized=T)
 dat = dat[rowMeans(dat) > 1,]
-mod  <- model.matrix(~   RRIX + Diet + PO_cat, colData(dds))
-mod0 <- model.matrix(~   1            , colData(dds))
+mod  <- model.matrix(~   RIX + PO*RIX + Diet, colData(dds))
+mod0 <- model.matrix(~   1                  , colData(dds))
 svseq <- svaseq(dat, mod, mod0, n.sv = 1)  
 ddssva = dds
 ddssva$SV1 <- svseq$sv[,1]
-design(ddssva) <- as.formula(~ SV1 + RRIX + Diet + PO_cat)
+design(ddssva) <- as.formula(~ SV1 + RIX + PO*RIX + Diet)
 dds = ddssva
 dds = DESeq(dds)
-dds = nbinomWaldTest(dds)
+POresnames = resultsNames(dds)[grep("PO", resultsNames(dds))]
+POres_05 = lapply(POresnames, function(x) results(dds, name=x, alpha=0.05))
+
+res[which(rownames(res) == "Gm23935"),]
+#dds = nbinomWaldTest(dds)
 
 ########### EDA ###########
 

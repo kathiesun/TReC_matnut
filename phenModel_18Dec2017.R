@@ -2,7 +2,7 @@ library(rjags)
 library(coda)
 library(ggplot2)
 library(RColorBrewer)
-library(ggmap)
+#library(ggmap)
 library(data.table)
 library(lmerTest)
 library(tidyverse)
@@ -61,17 +61,17 @@ for(phen in c(1,2,4,13,18)) {      # 1:length(matnut$ptypes)
 #  c(sapply(1:9, function(j) 
 #   mean(fit_stan[[1]]@sim$samples[[1]][[paste0("p[",j,",",i,"]")]]))) ))
 
-summcmc <- lapply(matnut_stan, function(x) if(!is.na(nrow(x))) summary(As.mcmc.list(x)))
+summcmc <- lapply(stanlist, function(x) if(!is.na(nrow(x))) summary(As.mcmc.list(x)))#matnut_stan
 
 sum_stan = sapply(1:length(summcmc),function(i){
   tmp = NULL
   if(!is.null(names(summcmc[[i]]))){
-    tmp = data.frame(do.call("cbind",list(summcmc[[i]][[1]],summcmc[[i]][[2]])))
+    tmp = data.frame(do.call("cbind",list(summcmc[[i]]$statistics,summcmc[[i]]$quantiles)))
     tmp$phen = names(summcmc)[[i]]
     tmp$param = rownames(tmp)
     tmp = tmp[-grep("raw",tmp$param),]
     tmp$Level = tmp$Variable = ""
-    tmp$Level[grep("SPO", tmp$param)] = encoded$Level[which(encoded$Variable == "PORIX")][c(2:length(grep("SPO", tmp$param)),1)]
+    tmp$Level[grep("SPO", tmp$param)] = encoded$Level[which(encoded$Variable == "RIX")][c(2:length(grep("SPO", tmp$param)),1)]
     tmp$Level[grep("_s[[1-9]", tmp$param)] = encoded$Level[which(encoded$Variable == "RIX")][c(2:length(grep("_s[[1-9]", tmp$param)),1)]
     tmp$Level[grep("_d[[1-9]", tmp$param)] = encoded$Level[which(encoded$Variable == "Diet")][c(2:length(grep("_d[[1-9]", tmp$param)),1)]
     tmp$Level[grep("_sd[[1-9]", tmp$param)] = encoded$Level[which(encoded$Variable == "DietRIX")][c(2:length(grep("_sd[[1-9]", tmp$param)),1)]
@@ -83,9 +83,9 @@ sum_stan = sapply(1:length(summcmc),function(i){
     tmp$Variable[grep("_sdp[[1-9]", tmp$param)] = "PODietRIX"
   }
   tmp
-})
+}, simplify=F)
 names(sum_stan) = names(summcmc)
-plot_tmp = sum_stan[[2]]
+plot_tmp = sum_stan[[keep_genes[3]]]
 plot_tmp = plot_tmp %>% filter(Variable == "PORIX")
 
 stan_plot <- plot.inter.ci(med=plot_tmp$X50., mu=plot_tmp$Mean, 
@@ -95,6 +95,12 @@ stan_plot <- plot.inter.ci(med=plot_tmp$X50., mu=plot_tmp$Mean,
                           col.midvals="white", pch.midvals="|", addline = F, wide=T, 
                           grouped=plot_tmp$Variable, ordered=F)
 stan_plot$plot
+keep_genes = lapply(sum_stan, function(x) x %>% filter(Variable == "PORIX", (X25. > 0 & X75. > 0) | (X25. < 0 & X75. < 0)))
+keep_genes = unlist(sapply(1:length(keep_genes), function(i) if(nrow(keep_genes[[i]]) > 0) names(keep_genes)[i]))
+
+
+
+
 matnut_jags$plot[[2]]
 comPlot <- stan_plot$plot + geom_point(data=lmerSumTemp, aes(x=Level, y=Intercept), col="red", size=3) +
   ggtitle(paste("LMER and JAGS comparison for", phenotype))

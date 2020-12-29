@@ -1,5 +1,6 @@
 library(tidyverse)
 library(rstan)
+options(mc.cores = parallel::detectCores())
 
 #setwd("C:/Users/Kathie/TReC_matnut/src")
 setwd("~/TReC_matnut/src")
@@ -17,8 +18,8 @@ it = as.numeric(args[1])
 dir <- "/nas/depts/006/valdar-lab/users/sunk/"
 matnut = read.csv(file.path(dir,'matnut_main/AllMice_GeneExpression_SSupdated_11.27.19.csv'))
 #matnut <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
-genes = read.csv("../deseq2/priorityTryGenes_16dec2020.csv", header=F)
-genes = genes$V1[-which(genes$V1 == "Gm23935")]
+#genes = read.csv("../deseq2/priorityTryGenes_16dec2020.csv", header=F)
+#genes = genes$V1[-which(genes$V1 == "Gm23935")]
 
 
 matnut = matnut %>% select(-contains("X"))
@@ -65,12 +66,12 @@ annot_genes = annot_genes %>% filter(Gene.Name %in% genes)
 t_counts = data.frame(t(gene_count %>% filter(Gene.Name %in% annot_genes$Gene.Name) %>%
 			select(contains("Pup.ID")))) 
 tmp = gene_count$Gene.Name[which(gene_count$Gene.Name %in% annot_genes$Gene.Name)] 
-tmp[46] = "Snhg14_v2"
+#tmp[46] = "Snhg14_v2"
 colnames(t_counts) = tmp 
 t_counts$ID = unlist(as.character(rownames(t_counts)))
 matnut_use = right_join(matnut, t_counts, "ID")
-
-
+colnames(matnut_use) = gsub("[-]",".",colnames(matnut_use))
+genes = gsub("[-]",".",genes)
 #regions_list = readRDS(file.path(dir,"mini/seg_regions_by_genotyping_perRIX_kmerBased_23nov2019.rds"))
 #haplofiles = list.files(file.path(dir,"mini/pup_haplo_blocks_by_CC_parent_dec2019"), 
 #                        pattern="haploBlocks.rds", full.names = T)
@@ -82,17 +83,19 @@ maxn = floor(nrow(annot_genes)/10)
 its_1 = ((it-1)*10)+1
 its_2 = ifelse(it==maxn, nrow(annot_genes), it*10)
 
+#its_1 = 1
+#its_2 = length(genes)
 print(paste(its_1,its_2))
 
 stanlist <- lapply(as.character(genes)[its_1:its_2], function(x) 
-		   
-		   for(x in as.character(genes)[its_1:its_2]){
-		   tmp = stanSum(df=matnut_use, encoded=encoded, phenotype=x, 
+  stanSum(df=matnut_use, encoded=encoded, phenotype=x, 
                    randvar=c("RIX", "DietRIX"), fixvar="Diet", POvar=c("RIX", "DietRIX"),
                    tryLam=c(-1, 0, .25, .33, .5, 1, 2, 3), normd=T, 
-                   chains=1, iter=2000)}
-		   )
-names(stanlist) = as.character(genes$V1)[its_1:its_2]
+                   chains=1, iter=2000)
+	)
+names(stanlist) = as.character(genes)[its_1:its_2]
+
+
 saveRDS(stanlist, paste0(dir,"/trec/tot_expr_priorityGenes_",it,"_16dec2020.rds"))
 #  stanmcmc<- As.mcmc.list(resStan)
 #  summcmc <- summary(stanmcmc)
