@@ -46,22 +46,37 @@ stanSum <- function(df, phenotype, encoded=NULL,
                  sapply(1:ncol(x_rd), function(i) encoded$Index[match(x_rd[,i], encoded$Level)], 
                         simplify=F))
   colnames(x_rd) = randvar
-  modelMat = model.matrix(~ Diet + RIX + DietRIX, df)
+  
+  RIX = df$RIX
+  Diet = df$Diet
+  DietRIX = df$DietRIX
+  
+  
+  contrasts(RIX) = contr.sum(length(unique(df$RIX)))
+  contrasts(Diet) = contr.sum(length(unique(df$Diet)))
+  contrasts(DietRIX) = contr.sum(length(unique(df$DietRIX)))
+  
+  modelMat = model.matrix(~ 0 + Diet + RIX, df)     # + DietRIX
+  modelMat = modelMat[,-1]
   x_d  = modelMat[,grep("[^0-9]$", colnames(modelMat))]
   x_s  = modelMat[,grep("^RIX", colnames(modelMat))]
-  x_sd = modelMat[,grep("^DietRIX", colnames(modelMat))]
+  #x_sd = modelMat[,grep("^DietRIX", colnames(modelMat))]
+  x_d = model.matrix(~ 0 + Diet, df)
+  x_s = model.matrix(~ 0 + RIX, df)
   
   standat <-  list(N       = length(y),
                    y       = y, 
                    K_d     = ncol(x_d),
                    K_s     = ncol(x_s),
-                   K_sd    = ncol(x_sd),
+                   #K_sd    = ncol(x_sd),
                    x_d     = x_d,
                    x_s     = x_s,
-                   x_sd    = x_sd,
+                   #x_sd    = x_sd,
                    SPO     = as.vector(df$PO))
   
-  fileName <- "../stan_SPO.stan"
+  fileName <- "../stan_SPO.stan"  
+  fileName <- "../stan_SPO_fullMat.stan"
+
   stan_code <- readChar(fileName, file.info(fileName)$size)
   #cat(stan_code)
   

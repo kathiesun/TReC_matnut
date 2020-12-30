@@ -3,6 +3,7 @@ library(rstan)
 options(mc.cores = parallel::detectCores())
 
 #setwd("C:/Users/Kathie/TReC_matnut/src")
+
 setwd("~/TReC_matnut/src")
 
 source("lmer_functions_rna.R")
