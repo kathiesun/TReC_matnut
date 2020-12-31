@@ -69,7 +69,7 @@ sum_stan = sapply(1:length(summcmc),function(i){
     tmp = data.frame(do.call("cbind",list(summcmc[[i]]$statistics,summcmc[[i]]$quantiles)))
     tmp$phen = names(summcmc)[[i]]
     tmp$param = rownames(tmp)
-    tmp = tmp[-grep("raw",tmp$param),]
+    #tmp = tmp[-grep("raw",tmp$param),]
     tmp$Level = tmp$Variable = ""
     tmp$Level[grep("SPO", tmp$param)] = encoded$Level[which(encoded$Variable == "RIX")][c(2:length(grep("SPO", tmp$param)),1)]
     tmp$Level[grep("_s[[1-9]", tmp$param)] = encoded$Level[which(encoded$Variable == "RIX")][c(2:length(grep("_s[[1-9]", tmp$param)),1)]
@@ -85,7 +85,8 @@ sum_stan = sapply(1:length(summcmc),function(i){
   tmp
 }, simplify=F)
 names(sum_stan) = names(summcmc)
-plot_tmp = sum_stan[[keep_genes[3]]]
+geneUse = "Dynlt1f" #genes[63]
+plot_tmp = sum_stan[[geneUse]]
 plot_tmp = plot_tmp %>% filter(Variable == "PORIX")
 
 stan_plot <- plot.inter.ci(med=plot_tmp$X50., mu=plot_tmp$Mean, 
@@ -95,7 +96,7 @@ stan_plot <- plot.inter.ci(med=plot_tmp$X50., mu=plot_tmp$Mean,
                           col.midvals="white", pch.midvals="|", addline = F, wide=T, 
                           grouped=plot_tmp$Variable, ordered=F)
 stan_plot$plot
-keep_genes = lapply(sum_stan, function(x) x %>% filter(Variable == "PORIX", (X25. > 0 & X75. > 0) | (X25. < 0 & X75. < 0)))
+keep_genes = lapply(sum_stan, function(x) x %>% filter(Variable == "PORIX", (X2.5. > 0 & X97.5. > 0) | (X2.5. < 0 & X97.5. < 0)))
 keep_genes = unlist(sapply(1:length(keep_genes), function(i) if(nrow(keep_genes[[i]]) > 0) names(keep_genes)[i]))
 
 

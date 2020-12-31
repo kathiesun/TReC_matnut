@@ -88,16 +88,20 @@ its_2 = ifelse(it==maxn, nrow(annot_genes), it*10)
 #its_2 = length(genes)
 print(paste(its_1,its_2))
 
+if(length(which(!genes %in% colnames(matnut_use))) > 0){
+  genes = genes[-which(!genes %in% colnames(matnut_use))]
+}
 stanlist <- lapply(as.character(genes)[its_1:its_2], function(x) 
   stanSum(df=matnut_use, encoded=encoded, phenotype=x, 
                    randvar=c("RIX", "DietRIX"), fixvar="Diet", POvar=c("RIX", "DietRIX"),
                    tryLam=c(-1, 0, .25, .33, .5, 1, 2, 3), normd=T, 
                    chains=1, iter=2000)
 	)
+
 names(stanlist) = as.character(genes)[its_1:its_2]
 
 
-saveRDS(stanlist, paste0(dir,"/trec/tot_expr_priorityGenes_",it,"_16dec2020.rds"))
+saveRDS(stanlist, paste0(dir,"/trec/tot_expr_priorityGenes_16dec2020.rds"))
 #  stanmcmc<- As.mcmc.list(resStan)
 #  summcmc <- summary(stanmcmc)
   

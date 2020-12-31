@@ -213,16 +213,18 @@ res <- results(dds)
 PO_res = resultsNames(dds)[grep("PO", resultsNames(dds))]
 POres_list = lapply(PO_res, function(x) results(dds, name = x))
 POres_Ordered <- lapply(POres_list, function(x) x[order(x$pvalue),])
-sig_genes_list = lapply(POres_Ordered, function(x) rownames(x)[which(x$padj < 0.1)])
+sig_genes_list = lapply(POres_Ordered, function(x) rownames(x)[which(x$padj < 0.01)])
 sig_genes_short = lapply(sig_genes_list, function(x) 
   if(length(grep("Gm|Rik|[.]", x)) > 0) x[-grep("Gm|Rik|[.]", x)])
 deseq_sig = sort(table(unlist(lapply(POres_Ordered, function(x) rownames(x[which(x$padj < 0.1),])))), decreasing = T)
 
 genes = unique(unlist(lapply(sig_genes_short, function(x) x[1:min(5,length(x))])))
+genes = unique(unlist(sig_genes_short))
 
 ddsPlot = dds
 ddsPlot$PO = factor(ddsPlot$PO)
-plotCts = plotCounts(ddsPlot, gene=sig_genes_short[[1]][3], intgroup=c("PO","RIX","Diet"), returnData = T)
+geneUse = keep_genes[14] #sig_genes_short[[1]][3]
+plotCts = plotCounts(ddsPlot, gene=geneUse, intgroup=c("PO","RIX","Diet"), returnData = T)
 ggplot(plotCts, aes(x=PO, y=count, col=Diet)) + 
   geom_point(position = position_jitter(width = 0.15)) + 
   theme_classic() + 
