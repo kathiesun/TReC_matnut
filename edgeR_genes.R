@@ -48,7 +48,7 @@ counts = gene_count[, grep("Pup.ID", colnames(gene_count))]
 t_counts = data.frame(t(gene_count %>% filter(Gene.Name %in% genes$V1) %>%
                           select(contains("Pup.ID")))) 
 tmp = gene_count$Gene.Name[which(gene_count$Gene.Name %in% genes$V1)] 
-tmp[46] = "Snhg14_v2"
+#tmp[46] = "Snhg14_v2"
 colnames(t_counts) = tmp 
 t_counts$ID = unlist(as.character(rownames(t_counts)))
 matnut_use = right_join(matnut, t_counts, "ID")
