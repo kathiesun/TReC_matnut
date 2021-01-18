@@ -1,5 +1,6 @@
 source("formulaWrapper.R")
 library(rjags)
+library(coda)
 
 lmer.to.jags.form <- function(lmerform){
   jagsform <- gsub("-1","1",lmerform)
@@ -241,5 +242,230 @@ runJagsModels_cov <- function(datalist, chains=2, formula=NULL, testLMER=NULL,
     varnames(fitJags[[phenotype[i]]]$fit)[grep("[[]", varnames(fitJags[[phenotype[i]]]$fit))] <- allnames
   }
   return(fitJags)
+}
+
+
+CC_pairs <- c("CC001/011", "CC041/051", "CC017/004", "CC023/047", "CC026/006", "CC014/003", "CC035/062", "CC032/042", "CC005/040")
+
+###################################
+
+run_jags_regress <- function(data_kmers, 
+                             niter=1000,
+                             n.thin = 1, 
+                             seg_regions=NULL,
+                             reg=NULL,
+                             save_dir=NULL,
+                             STZ=T, use_gene=F,#no_gene=F, 
+                             no_theta=F, alpha=NULL,
+                             cond=NULL,
+                             stan=F, stanMod=NULL){
+  reg <- list()
+  for(i in sort(unique(data_kmers$RRIX))){
+    testPups <- as.vector(t(data_kmers %>% ungroup() %>%
+                              filter(RRIX == i) %>%            #, !Pup.ID %in% problemPups
+                              dplyr::select("Pup.ID") %>% distinct()))
+    testData <- data_kmers %>% filter(Pup.ID %in% testPups)
+    chr = unique(testData$seq.Chromosome)
+    terms <- c("dir", "Diet", "DietRIX","RRIX", "PODIETRIX")
+    if(!is.null(cond)){
+      testData$PORIX = testData$RIX
+      testData$PODIETRIX = paste(testData$DietRIX, testData$dir, sep="_")
+      testData$PODIETRIX = factor(testData$PODIETRIX, 
+                                  levels=apply(data.frame(expand.grid(sort(unique(testData$Diet)), sort(unique(testData$RRIX)), sort(unique(testData$dir)))),
+                                               1, function(x) paste(x,collapse="_")))
+      getCond = table((testData %>% select(PODIETRIX, Pup.ID) %>% distinct())$PODIETRIX)
+      
+      terms <- c("dir", "Diet", "DietRIX","RRIX", "PODIETRIX")
+      cond = "PODIETRIX"
+      if(any(getCond == 1)){
+        terms = cond = "RRIX"
+      }
+    }
+    
+    #colnames(testData) <- toupper(colnames(testData))
+    if(!is.null(seg_regions) & chr!= "X"){
+      use_region = seg_regions[[paste(i)]] %>% filter(Chr == chr)
+      rem = c()
+      for(j in 1:nrow(use_region)){
+        tmp = use_region[j,]
+        rem = c(rem, which(testData$seq.Position > (tmp$start) & testData$seq.Position < (tmp$end)))
+      }
+      if(length(rem)>0) testData = testData[-rem,]
+    }
+    #terms <- c("dir", "Diet", "DietRIX","RRIX", "PODIETRIX")
+    if(!stan){
+      reg[[paste0("rix_",i)]] <- jags.genes.run(data=testData, mu_g0=0.5, niter=niter, n.thin=n.thin, 
+                                                nchains=2, terms=terms, STZ=STZ, use_gene=use_gene, 
+                                                no_theta=no_theta, alpha=alpha, quant=NULL, tau=NULL, 
+                                                cond=cond, #no_gene=no_gene, 
+                                                TIMBR=F, C_diet_4=C_diet_4, C_diet_2=C_diet_2,C_diet_3=C_diet_3)
+    } else {
+      if(length(which(!levels(testData$DietRIX) %in% testData$DietRIX)) > 0){
+        newLev = levels(testData$DietRIX)[-which(!levels(testData$DietRIX) %in% testData$DietRIX)]
+        testData$DietRIX = factor(testData$DietRIX, levels = newLev)
+      }
+      
+      if(length(which(!levels(testData$seq.Gene) %in% testData$seq.Gene)) > 0){
+        newLev = levels(testData$seq.Gene)[-which(!levels(testData$seq.Gene) %in% testData$seq.Gene)]
+        testData$seq.Gene = factor(testData$seq.Gene, levels = newLev)
+        testData$pup_gene = factor(paste(testData$Pup.ID, testData$seq.Gene, sep="_"))
+      }
+
+      encoded <- unique(getEncoding(testData, terms = unique(c(terms,"Pup.ID","seq.Gene","pup_gene"))))
+
+      reg[[paste0("rix_",i)]] = list()
+      reg[[paste0("rix_",i)]]$stan = stan_ase(df=testData, encoded=encoded, 
+                                         mu_g0=0.5, t20=0.001, 
+                                         nchains=2, iter=niter, 
+                                         C_diet_4=C_diet_4, C_diet_2=C_diet_2,C_diet_3=C_diet_3,
+                                         terms = terms,
+                                         stanMod=stanMod)
+      summ = data.frame(summary(reg[[paste0("rix_",i)]]$stan)$summary)
+      if(length(grep("eta|ind", rownames(summ))) > 0) summ = summ[-grep("eta|ind", rownames(summ)),]
+      summ$param = rownames(summ)
+      summ$param[grep("mu_g[[]", rownames(summ))] = encoded$Level[which(encoded$Variable == "SEQ.GENE")]
+      summ$param[grep("mu_p[[]", rownames(summ))] = encoded$Level[which(encoded$Variable == "PUP.ID")]
+      
+      reg[[paste0("rix_",i)]]$sum = summ
+      
+      freq_test = testData %>% group_by(seq.Gene) %>%
+        summarize(y = sum(CC_1), N = sum(sum))
+      freq_res = apply(freq_test, 1, function(x) 
+          binom.test(as.numeric(x["y"]), as.numeric(x["N"]), p = 0.5))
+      names(freq_res) = freq_test$seq.Gene
+      reg[[paste0("rix_",i)]]$freq = freq_res
+    }
+  }
+  
+  return(reg) 
+}
+
+
+############# encoding stuff #################
+getEncoding <- function(df, terms){
+  encoded <- data.frame()
+  #if(length(grep("gene", terms)) > 0) terms = terms[-grep("gene", terms)]
+  for(i in 1:length(terms)){
+    
+    var <- toupper(paste(terms[i]))
+    ind <- match(var, toupper(colnames(df)))
+    if(!is.na(ind) > 0){
+      useLev = unique(df[,ind])
+      if(!is.null(levels(df[,ind]))) useLev = levels(df[,ind])[which(levels(df[,ind]) %in% useLev)]
+      
+      #vec <- factor(t(df[,ind]), levels=useLev)
+      len <- length(unlist(useLev))       #length(levels(as.factor(vec)))
+      tempdf <- data.frame(Level = as.character(paste(unlist(useLev))), 
+                           Index = 1:len, 
+                           Variable = rep(var,len))
+      encoded <- rbind(encoded,tempdf)
+    }
+  }
+  return(encoded)
+}
+
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+
+array.summarize <- function(array, labels=NULL){
+  if(class(array) == "list" & class(array[[1]]) %in% c("list", "mcarray")){   
+    nme <- names(array)
+    listLength <- length(array)
+  } else {
+    listed <- F
+    nme <- NULL
+    listLength <- 1
+  }
+  sum_list <- list()
+  for(i in 1:listLength){
+    comb_int = means = NULL
+    len3 <- length(dim(as.array(array[[i]])))
+    nchains <- dim(as.array(array[[i]]))[len3]
+    if(len3 == 3){
+      est_comb <- sapply(1:dim(array[[i]])[1], function(x){
+        sapply(1:nchains, function(y){
+          tmp = as.vector(unlist(array[[i]][x,,y]))
+          tmp[!is.na(tmp)]}, simplify=F)
+      }, simplify=F)
+      sep_int <- lapply(est_comb, function(x){
+        data.frame(lapply(x, function(y) HPDinterval(as.mcmc(y))))  })
+    } else if (len3 == 4){
+      est_comb <- sapply(1:dim(array[[i]])[1], function(x){
+        sapply(1:dim(array[[i]])[2], function(y){
+          sapply(1:nchains, function(z){
+            tmp = as.vector(unlist(array[[i]][x,y,,z]))
+            tmp[!is.na(tmp)]}, simplify=F)
+        }, simplify=F) }, simplify=F)
+      sep_int <- lapply(est_comb, function(x){
+        do.call("rbind", lapply(x, function(y) 
+          data.frame(lapply(y, function(z) HPDinterval(as.mcmc(z)))) ))  })
+      comb_int <- lapply(est_comb, function(x) 
+        do.call("rbind", lapply(x, function(y) HPDinterval(as.mcmc(unlist(y)))) ) )
+      comb_int <- do.call("rbind", comb_int)
+      means <- lapply(est_comb, function(x) 
+        do.call("rbind", lapply(x, function(y) c(Mode(unlist(y)), mean(unlist(y)), median(unlist(y))))) )
+      means <- do.call("rbind", means)
+      colnames(means) <- c("Mode","Mean","Median")  
+      
+    } else {
+      est_comb <- lapply(array, unlist)
+      sep_int <- lapply(est_comb, function(x){
+        data.frame(HPDinterval(as.mcmc(x)))  })
+    }
+    
+    sep_int <- do.call("rbind", sep_int)
+    colnames(sep_int)[1:2] <- c(paste0("lower.", nchains), paste0("upper.", nchains))
+    
+    #sep_ints <- sapply(1:dim(array)[1], function(x) HPDinterval(as.mcmc.list(array)), simplify=F)
+    #names(sep_ints) <- paste0("ints",seq(1:nchains))
+    #sep_int <- do.call("cbind", sep_ints)
+    if(is.null(comb_int)){
+      comb_int <- lapply(est_comb, function(x) HPDinterval(as.mcmc(unlist(x))))
+      comb_int <- do.call("rbind", comb_int)
+    }
+    if(is.null(means)){
+      means <- lapply(est_comb, function(x) c(Mode(unlist(x)), mean(unlist(x)), median(unlist(x))))
+      means <- do.call("rbind", means)
+      colnames(means) <- c("Mode","Mean","Median")
+    }
+    
+    summary <- cbind(means, comb_int, sep_int)
+    if(is.null(labels) | is.null(nme)){
+      if(is.null(rownames(summary))) rownames(summary) <- seq(1:dim(array[[i]])[1])
+    } else {
+      v <- gsub("B_|PO", "", toupper(nme[i]))
+      if(toupper(nme[i]) == "MU_P") v <- "PUP.ID"
+      if(toupper(nme[i]) == "MU_G") v <- "PUP_GENE"
+      if(toupper(nme[i]) == "MU_R") v <- "RRIX"
+      if(toupper(nme[i]) == "B_DIETPORIX") v <- c("DIET","RRIX")
+      v = ifelse(v == "RIX" & length(v) == 1, "RRIX", v)
+      ind <- which(toupper(labels$Variable) %in% v)
+      if(any(ind) == 0){
+        if(is.null(rownames(summary))){
+          rownames(summary) <- seq(1:dim(array[[i]])[1])
+        } else {
+          rownames(summary) <- gsub("var","", rownames(summary))
+        }
+      } else if(length(v) > 1){
+        names = sapply(1:length(v), function(i)
+          labels$Level[which(toupper(labels$Variable) %in% v[i])], simplify=F)
+        names_ex = expand.grid(names[[2]], names[[1]])
+        rownames(summary) = paste0(names_ex$Var1, "_", names_ex$Var2)
+      } else {
+        rownames(summary) <- unique(gsub(" ", "_", labels$Level[ind]))
+      }
+    }
+    sum_list[[i]] <- summary
+  }
+  if(listLength == 1){
+    sum_list <- sum_list[[1]]
+  } else {
+    names(sum_list) <- nme
+  }
+  
+  return(summary = sum_list)
 }
 
