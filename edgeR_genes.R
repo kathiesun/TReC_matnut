@@ -18,7 +18,14 @@ dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
 
 #matnut <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
 matnut = read.csv(file.path(dir,'matnut_main/AllMice_GeneExpression_SSupdated_11.27.19.csv'))
-gene_count <- read.csv(file.path(dir,'/trec/gene_count_matrix.csv'))
+gene_count_all <- read.csv(file.path(dir,'/trec/gene_count_matrix.csv'))
+gene_count <- read.csv(file.path(dir,'/trec/gene_count_matrix_hetsOnly.csv'))
+
+gene_counts_files = list.files(file.path(dir,"/trec/geneCounts_for_deseq2"), full.names=T)
+pups = do.call("rbind", strsplit(gene_counts_files, "/|_"))[,11]
+gene_count = do.call("cbind", lapply(gene_counts_files, read.table))
+colnames(gene_count) = paste0("Pup.ID_",pups)
+
 #genes = read.csv("../deseq2/priorityTryGenes_16dec2020.csv", header=F)
 
 colnames(gene_count)[1] = "gene_id"

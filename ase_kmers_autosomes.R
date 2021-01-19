@@ -205,14 +205,14 @@ pvals = do.call("rbind", lapply(ratios_lst, function(z)
 
 pval_list = lapply(unique(pvals$gene), function(x) pvals[which(pvals$gene == x),])
 #library(metaRNASeq)
-pval_comb = fishercomb(pval_list)
+#pval_comb = fishercomb(pval_list)
 
 ##############  fisher  ##################
 pmat = do.call("rbind", lapply(pval_list, function(g){
   data.frame(-2*sum(log(g$x.p.value)), nrow(g))
 }))
 
-pmat=do.call("rbind",pmat)
+#pmat=do.call("rbind",pmat)
 colnames(pmat) = c("fisher_stat", "n")
 pmat$gene = unique(pvals$gene)
 
