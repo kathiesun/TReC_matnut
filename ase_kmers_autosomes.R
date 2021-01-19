@@ -15,15 +15,13 @@ C_diet_4 = read.csv(file.path(dir, "variant_data/C_matrix_4diets.csv"), header=F
 C_diet_2 = read.csv(file.path(dir, "variant_data/C_matrix_2diets.csv"), header=F)
 C_diet_3 = matrix(c(0.9659258,-0.2588190,-0.7071068,-0.2588190,0.9659258,-0.7071068),nrow=3,ncol=2)
 
-
-matnut = read.csv(file.path(dir,'matnut_main/AllMice_GeneExpression_SSupdated_11.27.19.csv'))
 gene_count <- read.csv(file.path(dir,'/trec/gene_count_matrix.csv'))
-
 colnames(gene_count)[1] = "gene_id"
 gene_count$Gene.ID = do.call("rbind",(strsplit(as.character(gene_count$gene_id), "[|]")))[,1]
 gene_count$Gene.Name = do.call("rbind", (strsplit(as.character(gene_count$gene_id), "[|]")))[,2]
-
 samples = colnames(gene_count)[grep("Pup", colnames(gene_count))]
+
+matnut = read.csv(file.path(dir,'matnut_main/AllMice_GeneExpression_SSupdated_11.27.19.csv'))
 matnut$ID = paste0("Pup.ID_",matnut$Pup.ID)
 matnut$Diet = gsub(" $", "", matnut$Diet)
 matnut$Diet = factor(matnut$Diet, levels=c("Standard","Low Protein","Methyl Enriched","Vitamin D Deficient"))
@@ -154,7 +152,7 @@ for(c in 1:19){
   masterSnps = masterSnps[[1]]
   masterSnps <- do.call("cbind", masterSnps)
   masterSnps$seq.consensus <- paste0(masterSnps$seq.end5, masterSnps$seq.end3)
-  useSnps = masterSnps %>% filter(seq.Gene %in% all_genes)
+  #useSnps = masterSnps %>% filter(seq.Gene %in% all_genes)
   
   ## count data 
   chr_files <- count_files[grep(paste0("chr", c,"_"), count_files)]
@@ -163,13 +161,13 @@ for(c in 1:19){
   reforig <- unique(read.csv(ref_file, header = T))
   altorig <- unique(read.csv(alt_file, header = T))
   reforig$X = altorig$X <- NULL
-  reforig = reforig %>% filter(k.mer %in% useSnps$seq.refseq)
-  altorig = altorig %>% filter(k.mer %in% useSnps$seq.altseq)
+  #reforig = reforig %>% filter(k.mer %in% useSnps$seq.refseq)
+  #altorig = altorig %>% filter(k.mer %in% useSnps$seq.altseq)
   reforig$pup = reforig$pup.id 
   altorig$pup = altorig$pup.id 
   
   data_kmers[[c]] = process_and_plot(chr=c, 
-                                snp_info=useSnps, 
+                                snp_info=masterSnps, 
                                 sample_info=pupInfo, 
                                 RIX_info=lab, 
                                 ref_counts=reforig, alt_counts=altorig, 
