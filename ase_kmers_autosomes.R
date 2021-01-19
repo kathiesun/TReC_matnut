@@ -178,13 +178,7 @@ for(c in 1:19){
  
   #data_kmers$podietrix = paste(data_kmers$dir, data_kmers$DietRIX, sep="_")
   print(c)
-  ratios_lst[[c]] = run_stan_regress(data_kmers=data_kmers[[c]], 
-                                niter=10000, n.thin=5,  
-                                seg_regions=seg_regions,
-                                save_dir=NULL, 
-                                STZ=T, use_gene=F,
-                                no_theta=F, alpha=NULL,
-                                stan=F, stanMod = "ase_mu_g_simple.stan")
+
   print(paste(c, "done"))
   
 }
@@ -207,7 +201,20 @@ pval_list = lapply(unique(pvals$gene), function(x) pvals[which(pvals$gene == x),
 #library(metaRNASeq)
 #pval_comb = fishercomb(pval_list)
 
+read.table
+
+
+ratios_lst[[c]] = run_stan_regress(data_kmers=data_kmers[[c]], 
+                                   niter=10000, n.thin=5,  
+                                   seg_regions=seg_regions,
+                                   save_dir=NULL, 
+                                   STZ=T, use_gene=F,
+                                   no_theta=F, alpha=NULL,
+                                   stan=F, stanMod = "ase_mu_g_simple.stan")
+
+
 ##############  fisher  ##################
+
 pmat = do.call("rbind", lapply(pval_list, function(g){
   data.frame(-2*sum(log(g$x.p.value)), nrow(g))
 }))

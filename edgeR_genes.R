@@ -3,7 +3,7 @@ library(ggplot2)
 library(rstan)
 library(edgeR)
 library(DESeq2)
-#library(sva)
+library(sva)
 
 setwd("C:/Users/Kathie/TReC_matnut/src")
 
@@ -18,19 +18,20 @@ dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
 
 #matnut <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
 matnut = read.csv(file.path(dir,'matnut_main/AllMice_GeneExpression_SSupdated_11.27.19.csv'))
-gene_count_all <- read.csv(file.path(dir,'/trec/gene_count_matrix.csv'))
+#gene_count_all <- read.csv(file.path(dir,'/trec/gene_count_matrix.csv'))
 gene_count <- read.csv(file.path(dir,'/trec/gene_count_matrix_hetsOnly.csv'))
+rownames(gene_count) = gene_count$Gene.Name
 
-gene_counts_files = list.files(file.path(dir,"/trec/geneCounts_for_deseq2"), full.names=T)
-pups = do.call("rbind", strsplit(gene_counts_files, "/|_"))[,11]
-gene_count = do.call("cbind", lapply(gene_counts_files, read.table))
-colnames(gene_count) = paste0("Pup.ID_",pups)
+#gene_counts_files = list.files(file.path(dir,"/trec/geneCounts_for_deseq2"), full.names=T)
+#pups = do.call("rbind", strsplit(gene_counts_files, "/|_"))[,11]
+#gene_count = do.call("cbind", lapply(gene_counts_files, read.table))
+#colnames(gene_count) = paste0("Pup.ID_",pups)
 
 #genes = read.csv("../deseq2/priorityTryGenes_16dec2020.csv", header=F)
 
-colnames(gene_count)[1] = "gene_id"
-gene_count$Gene.ID = do.call("rbind",(strsplit(as.character(gene_count$gene_id), "[|]")))[,1]
-gene_count$Gene.Name = do.call("rbind", (strsplit(as.character(gene_count$gene_id), "[|]")))[,2]
+#colnames(gene_count)[1] = "gene_id"
+#gene_count$Gene.ID = do.call("rbind",(strsplit(as.character(gene_count$gene_id), "[|]")))[,1]
+#gene_count$Gene.Name = do.call("rbind", (strsplit(as.character(gene_count$gene_id), "[|]")))[,2]
 
 samples = colnames(gene_count)[grep("Pup", colnames(gene_count))]
 matnut$ID = paste0("Pup.ID_",matnut$Pup.ID)
@@ -72,124 +73,76 @@ length(which(!gene_count$Gene.Name %in% annot_genes$Gene.Name))
 gene_count = gene_count %>% filter(Gene.Name %in% annot_genes$Gene.Name)
 
 if(any(duplicated(gene_count$Gene.Name))) gene_count = data.frame(gene_count[-which(duplicated(gene_count$Gene.Name)),])
-gene_annot = left_join(gene_count, annot_genes, by="Gene.Name")
+#gene_annot = left_join(gene_count, annot_genes, by="Gene.Name")
+gene_count = gene_count[, grep("Pup.ID", colnames(gene_count))]
 
-indiv_pups = list.files(file.path(dir, "mini/pup_haplo_blocks_by_CC_parent_dec2019"), pattern="haploBlocks", full.names = T)
-phased_CC_haplotype = lapply(indiv_pups, readRDS)
-tmp = do.call("rbind", lapply(indiv_pups, function(x) unlist(strsplit(x, "_"))))
-names(phased_CC_haplotype) = paste0("Pup.ID_", tmp[,ncol(tmp)-1])
+colData = matnut[match(colnames(gene_count),matnut$ID),c("Breeding.Batch","Behavior.Batch","RIX","Reciprocal","Diet",
+                                                     "Dam.ID","ID","PO","DietRIX","DietRIXPOq")]
+##################  DESeq2  ##########################
+#colData = colData %>% arrange(RIX, Diet, PO)
 
-lapply(names(phased_CC_haplotype), function(x) {
-  mat = phased_CC_haplotype[[x]]$founder_by_parent[[1]]
-  pat = phased_CC_haplotype[[x]]$founder_by_parent[[2]]
-  apply(gene_annot, 1, function(y) {
-    mat_tmp = mat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
-    pat_tmp = pat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
-    ifelse(mat_tmp$found == pat_tmp$found, NA, 
-           ifelse((nchar(mat_tmp$found) != 1 | nchar(pat_tmp$found) != 1), NA, y[[x]]))
-  })
-    
-})
+dds_list = list()
+for(r in levels(matnut$RIX)){
+  colData_tmp = colData %>% filter(RIX == r)
+  colData_tmp$Diet = factor(colData_tmp$Diet, 
+                            levels=levels(colData$Diet)[which(levels(colData$Diet) %in% colData_tmp$Diet)])
+  colData_tmp$DietRIX = factor(colData_tmp$DietRIX, 
+                               levels=levels(colData$DietRIX)[which(levels(colData$DietRIX) %in% colData_tmp$DietRIX)])
+  poss_diet_PO = expand.grid(paste0(levels(colData_tmp$Diet),r), colData_tmp$PO)
+  poss_diet_PO = unique(apply(poss_diet_PO, 1, function(x) paste(x, collapse="_")))
+  colData_tmp$DietRIXPOq = factor(colData_tmp$DietRIXPOq, levels=poss_diet_PO)
+  
+  gene_count_tmp = gene_count %>% select(one_of(colData_tmp$ID))
 
-
-het_counts = list()
-for (x in names(phased_CC_haplotype)) {
-  het_counts[[x]] = rep(NA, length=nrow(gene_annot))
-  mat = phased_CC_haplotype[[x]]$founder_by_parent[[1]]
-  pat = phased_CC_haplotype[[x]]$founder_by_parent[[2]]
-  for(i in 1:nrow(gene_annot)){
-    y=gene_annot[i,]
-    mat_tmp = mat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
-    pat_tmp = pat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
-    if(nrow(mat_tmp) > 0 & nrow(pat_tmp) > 0){
-      if(mat_tmp$found != pat_tmp$found & (nchar(mat_tmp$found) == 1 | nchar(pat_tmp$found) == 1)){
-        het_counts[[x]][i] = y[[x]]
-      }
-    }
-    
-    if(i%%1000 == 0) print(paste(x,i))
-  }
+  Diet = colData_tmp$Diet
+  PO = colData_tmp$PO
+  DietRIX = colData_tmp$DietRIX
+  contrasts(Diet) = contr.sum(length(unique(colData_tmp$Diet)))
+  contrasts(DietRIX) = contr.sum(length(unique(colData_tmp$DietRIX)))
+  mm = model.matrix(~ 0 + Diet + PO)    
+  
+  all.zero <- apply(mm, 2, function(x) all(x==0))
+  idx <- which(all.zero)
+  if(length(idx) > 0) mm <- mm[,-idx]
+  
+  rownames(colData_tmp) = colData_tmp$ID
+  cts = gene_count_tmp[complete.cases(gene_count_tmp),match(colData_tmp$ID, colnames(gene_count_tmp))]
+  all(rownames(colData_tmp) == colnames(cts))
+  dds <- DESeqDataSetFromMatrix(countData = cts, 
+                                colData = colData_tmp,
+                                design = mm)
+  
+  ## pre-filtering
+  keep <- rowSums(counts(dds) >= 10) >= 10
+  dds <- dds[keep,]
+  #remove = grep("MSTRG", rownames(counts(dds)))
+  #if(length(remove) > 0) dds = dds[-remove,]
+  
+  dds <- estimateSizeFactors(dds)
+  dds <- estimateDispersions(dds)
+  
+  base = "Diet + PO"
+  dat = counts(dds, normalized=T)
+  dat = dat[rowMeans(dat) > 1,]
+  mod  <- model.matrix(as.formula(paste("~ 0 +", base)), colData(dds))
+  mod0 <- model.matrix(~   1                           , colData(dds))
+  svseq <- svaseq(dat, mod, mod0, n.sv = 1)  
+  ddssva = dds
+  ddssva$SV1 <- svseq$sv[,1]
+  
+  design(ddssva) <- as.formula(paste("~ 0 + SV1 +", base))
+  dds = ddssva
+  
+  dds_list[[r]] <- DESeq(dds)
 }
 
-
-
-
-rownames(gene_count) = gene_count$Gene.Name
-colnames(gene_count)
-
-
-
-counts = gene_count[, grep("Pup.ID", colnames(gene_count))]
-
-
-
-
-#counts = gene_count[which(gene_count$Gene.Name %in% genes$V1), grep("Pup.ID", colnames(gene_count))]
-
-#t_counts = data.frame(t(gene_count %>% filter(Gene.Name %in% genes$V1) %>%
-#                          select(contains("Pup.ID")))) 
-#tmp = gene_count$Gene.Name[which(gene_count$Gene.Name %in% genes$V1)] 
-#tmp[46] = "Snhg14_v2"
-#colnames(t_counts) = tmp 
-#t_counts$ID = unlist(as.character(rownames(t_counts)))
-#matnut_use = right_join(matnut, t_counts, "ID")
-colData = matnut[match(colnames(counts),matnut$ID),c("Breeding.Batch","Behavior.Batch","RIX","Reciprocal","Diet",
-                 "Dam.ID","ID","PO","DietRIX","DietRIXPOq")]
-
-##################  DESeq2  ##########################
-colData = colData %>% arrange(RIX, Diet, PO)
-RIX = colData$RIX
-RRIX = colData$RIX
-Diet = colData$Diet
-PO = colData$PO
-DietRIX = colData$DietRIX
-contrasts(RIX) = contr.sum(9)
-contrasts(RRIX) = contr.sum(9)
-contrasts(Diet) = contr.sum(4)
-contrasts(DietRIX) = contr.sum(length(unique(colData$DietRIX)))
-mm = model.matrix(~ 0 + RIX + Diet + PO:RIX)    
-
-all.zero <- apply(mm, 2, function(x) all(x==0))
-idx <- which(all.zero)
-if(length(idx) > 0) mm <- mm[,-idx]
-
-rownames(colData) = colData$ID
-cts = counts[,match(colData$ID, colnames(counts))]
-all(rownames(colData) == colnames(cts))
-dds <- DESeqDataSetFromMatrix(countData = cts, 
-                              colData = colData,
-                              design = mm)
-
-## pre-filtering
-keep <- rowSums(counts(dds) >= 10) >= 10
-dds <- dds[keep,]
-remove = grep("MSTRG", rownames(counts(dds)))
-if(length(remove) > 0) dds = dds[-remove,]
-
-dds <- estimateSizeFactors(dds)
-dds <- estimateDispersions(dds)
-
-base = "RIX + Diet + PO:RIX"
-dat = counts(dds, normalized=T)
-dat = dat[rowMeans(dat) > 1,]
-mod  <- model.matrix(as.formula(paste("~ 0 +", base)), colData(dds))
-mod0 <- model.matrix(~   1                           , colData(dds))
-svseq <- svaseq(dat, mod, mod0, n.sv = 1)  
-ddssva = dds
-ddssva$SV1 <- svseq$sv[,1]
-  
-design(ddssva) <- as.formula(paste("~ 0 + SV1 +", base))
-dds = ddssva
-
-dds <- DESeq(dds)
-dds = readRDS(file.path(dir,"de_results/deseq_28dec2020.rds"))
+#dds = readRDS(file.path(dir,"de_results/deseq_28dec2020.rds"))
 res <- results(dds)
 
-#saveRDS(dds, file.path(dir,"de_results/deseq_28dec2020.rds"))
+#saveRDS(dds_list, file.path(dir,"de_results/dds_list_hetReg_sepRIX_19jan2021.rds"))
 
 
-PO_res = resultsNames(dds)[grep("PO", resultsNames(dds))]
-POres_list = lapply(PO_res, function(x) results(dds, name = x))
+POres_list = lapply(dds_list, function(x) results(x, name="PO"))
 POres_Ordered <- lapply(POres_list, function(x) x[order(x$pvalue),])
 sig_genes_list = lapply(POres_Ordered, function(x) rownames(x)[which(x$padj < 0.1)])
 sig_genes_short = lapply(sig_genes_list, function(x) 
@@ -358,6 +311,63 @@ interResLst = lapply(remSeg_dds_interDiet, function(x){
   dtmp$padj  <- p.adjust(dtmp$pvalue, method = "BH")
   dtmp %>% arrange(pvalue)
 })
+
+
+###################  get het counts  #########################
+
+indiv_pups = list.files(file.path(dir, "mini/pup_haplo_blocks_by_CC_parent_dec2019"), pattern="haploBlocks", full.names = T)
+phased_CC_haplotype = lapply(indiv_pups, readRDS)
+tmp = do.call("rbind", lapply(indiv_pups, function(x) unlist(strsplit(x, "_"))))
+names(phased_CC_haplotype) = paste0("Pup.ID_", tmp[,ncol(tmp)-1])
+
+lapply(names(phased_CC_haplotype), function(x) {
+  mat = phased_CC_haplotype[[x]]$founder_by_parent[[1]]
+  pat = phased_CC_haplotype[[x]]$founder_by_parent[[2]]
+  apply(gene_annot, 1, function(y) {
+    mat_tmp = mat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
+    pat_tmp = pat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
+    ifelse(mat_tmp$found == pat_tmp$found, NA, 
+           ifelse((nchar(mat_tmp$found) != 1 | nchar(pat_tmp$found) != 1), NA, y[[x]]))
+  })
+  
+})
+
+
+het_counts = list()
+for (x in names(phased_CC_haplotype)) {
+  het_counts[[x]] = rep(NA, length=nrow(gene_annot))
+  mat = phased_CC_haplotype[[x]]$founder_by_parent[[1]]
+  pat = phased_CC_haplotype[[x]]$founder_by_parent[[2]]
+  for(i in 1:nrow(gene_annot)){
+    y=gene_annot[i,]
+    mat_tmp = mat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
+    pat_tmp = pat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
+    if(nrow(mat_tmp) > 0 & nrow(pat_tmp) > 0){
+      if(mat_tmp$found != pat_tmp$found & (nchar(mat_tmp$found) == 1 | nchar(pat_tmp$found) == 1)){
+        het_counts[[x]][i] = y[[x]]
+      }
+    }
+    
+    if(i%%1000 == 0) print(paste(x,i))
+  }
+}
+
+
+
+
+rownames(gene_count) = gene_count$Gene.Name
+colnames(gene_count)
+
+
+#counts = gene_count[which(gene_count$Gene.Name %in% genes$V1), grep("Pup.ID", colnames(gene_count))]
+
+#t_counts = data.frame(t(gene_count %>% filter(Gene.Name %in% genes$V1) %>%
+#                          select(contains("Pup.ID")))) 
+#tmp = gene_count$Gene.Name[which(gene_count$Gene.Name %in% genes$V1)] 
+#tmp[46] = "Snhg14_v2"
+#colnames(t_counts) = tmp 
+#t_counts$ID = unlist(as.character(rownames(t_counts)))
+#matnut_use = right_join(matnut, t_counts, "ID")
 
 
 
