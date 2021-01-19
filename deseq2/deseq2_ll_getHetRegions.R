@@ -5,7 +5,8 @@ library(tidyverse)
 #dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)/variant_data"
 
 setwd("~/TReC_matnut/src")
-dir="/nas/depts/006/valdar-lab/users/sunk/variant_data"
+dir="/nas/depts/006/valdar-lab/users/sunk/"
+source("summary_functions.R")
 
 args <- commandArgs(trailingOnly = TRUE)
 p = as.numeric(args[1])
@@ -68,17 +69,16 @@ phased_CC_haplotype = lapply(indiv_pups, readRDS)
 tmp = do.call("rbind", lapply(indiv_pups, function(x) unlist(strsplit(x, "_"))))
 names(phased_CC_haplotype) = paste0("Pup.ID_", tmp[,ncol(tmp)-1])
 
-lapply(names(phased_CC_haplotype), function(x) {
-  mat = phased_CC_haplotype[[x]]$founder_by_parent[[1]]
-  pat = phased_CC_haplotype[[x]]$founder_by_parent[[2]]
-  apply(gene_annot, 1, function(y) {
-    mat_tmp = mat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
-    pat_tmp = pat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
-    ifelse(mat_tmp$found == pat_tmp$found, NA, 
-           ifelse((nchar(mat_tmp$found) != 1 | nchar(pat_tmp$found) != 1), NA, y[[x]]))
-  })
-  
-})
+#lapply(names(phased_CC_haplotype), function(x) {
+#  mat = phased_CC_haplotype[[x]]$founder_by_parent[[1]]
+#  pat = phased_CC_haplotype[[x]]$founder_by_parent[[2]]
+#  apply(gene_annot, 1, function(y) {
+#    mat_tmp = mat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
+#    pat_tmp = pat %>% filter(as.character(chr) == as.character(y["Chr"]), start < y["Start"], end > y["End"])
+#    ifelse(mat_tmp$found == pat_tmp$found, NA, 
+#           ifelse((nchar(mat_tmp$found) != 1 | nchar(pat_tmp$found) != 1), NA, y[[x]]))
+#  })
+#})
 
 
 #het_counts = list()

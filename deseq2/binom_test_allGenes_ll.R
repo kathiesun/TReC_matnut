@@ -7,8 +7,10 @@ source("summary_functions.R")
 source("ase_summary_source.R")
 source("stan_pheno_functions.R")
 
+args <- commandArgs(trailingOnly = TRUE)
+c = as.numeric(args[1])
 
-dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
+dir <- "/nas/depts/006/valdar-lab/users/sunk/"
 
 matnut = read.csv(file.path(dir,'matnut_main/AllMice_GeneExpression_SSupdated_11.27.19.csv'))
 matnut$ID = paste0("Pup.ID_",matnut$Pup.ID)
@@ -25,15 +27,12 @@ matnut$RIX = factor(matnut$RIX, levels = c(1:4,6:10))
 map = read.csv(file.path(dir,"mini/combined_map_cs_gbrs_allmarkers_17mar2020.csv"))
 encoded <- getEncoding(matnut, terms = c("RIX","Diet","DietRIX"))
 
-ie_genes = read.csv("C:/Users/Kathie/Dropbox (ValdarLab)/imprinted_genes/2014_05_14_allImprintedGenes.csv")
-
-gregg_genes = read.csv("../gregg_POgenes.csv")
-colnames(gregg_genes)[1] = "Gene.Name"
-
-de_genes = read.table(file.path(dir, "trec/priority_deseq_genes_11jan2021.txt"))
-ase_genes = read.csv(file.path(dir, "trec/priority_ase_genes_11jan2021.csv"))
-
-all_genes = unique(c(gregg_genes$Gene.Name, de_genes$V1, ase_genes$Gene.Name, ie_genes$mgi_symbol))
+#ie_genes = read.csv("C:/Users/Kathie/Dropbox (ValdarLab)/imprinted_genes/2014_05_14_allImprintedGenes.csv")
+#gregg_genes = read.csv("../gregg_POgenes.csv")
+#colnames(gregg_genes)[1] = "Gene.Name"
+#de_genes = read.table(file.path(dir, "trec/priority_deseq_genes_11jan2021.txt"))
+#ase_genes = read.csv(file.path(dir, "trec/priority_ase_genes_11jan2021.csv"))
+#all_genes = unique(c(gregg_genes$Gene.Name, de_genes$V1, ase_genes$Gene.Name, ie_genes$mgi_symbol))
 
 ################################################################
 
@@ -63,7 +62,7 @@ data_kmers = ratios_lst = list()
 #if(j == 1){
 ## snp info
 
-for(c in 1:19){
+#for(c in 1:19){
   
   masterSnps = readRDS(masterSnps_files[grep(paste0("chr",c,"_"), masterSnps_files)])
   masterSnps = masterSnps[[1]]
@@ -94,15 +93,17 @@ for(c in 1:19){
                                      seg_regions=seg_regions)
   
   #data_kmers$podietrix = paste(data_kmers$dir, data_kmers$DietRIX, sep="_")
-  print(c)
-  ratios_lst[[c]] = run_stan_regress(data_kmers=data_kmers[[c]], 
-                                     niter=10000, n.thin=5,  
-                                     seg_regions=seg_regions,
-                                     save_dir=NULL, 
-                                     STZ=T, use_gene=F,
-                                     no_theta=F, alpha=NULL,
-                                     stan=F, stanMod = "ase_mu_g_simple.stan")
-  print(paste(c, "done"))
+	print(c)
+  write.table(data_kmers[[c]], paste0(dir, "//ase_autosomes/data_kmers_from_process_and_plot/chr_",c,"_18jan2021.txt"), quote=F, row.names=F)
+
+ # ratios_lst[[c]] = run_stan_regress(data_kmers=data_kmers[[c]], 
+ #                                    niter=10000, n.thin=5,  
+ #                                    seg_regions=seg_regions,
+ #                                    save_dir=NULL, 
+ #                                    STZ=T, use_gene=F,
+ #                                    no_theta=F, alpha=NULL,
+ #                                    stan=F, stanMod = "ase_mu_g_simple.stan")
+ # print(paste(c, "done"))
   
-}
+#}
 
