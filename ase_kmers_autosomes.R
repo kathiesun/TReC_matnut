@@ -201,30 +201,59 @@ pval_list = lapply(unique(pvals$gene), function(x) pvals[which(pvals$gene == x),
 #library(metaRNASeq)
 #pval_comb = fishercomb(pval_list)
 
-read.table
+files = list.files(file.path(dir, "trec/data_kmers_from_process_and_plot/"), pattern=".txt",
+                   full.names = T)
+data_kmers_list = lapply(files, read.table, sep="\n")
+data_kmers_list = lapply(data_kmers_list, function(x) 
+  do.call("rbind", data.frame(apply(x, 1, function(y) strsplit(y," ")))))
 
+for(i in 1:length(data_kmers_list)){
+  colnames(data_kmers_list[[i]]) = data_kmers_list[[i]][1,]
+  data_kmers_list[[i]] = data_kmers_list[[i]][-1,]
+  rownames(data_kmers_list[[i]]) = NULL
+  data_kmers_list[[i]] = data.frame(data_kmers_list[[i]])
+  data_kmers_list[[i]][,c("Breeding.Batch","Behavior.Batch","RIX","Diet","dir","CC_lab")] = 
+    apply(data_kmers_list[[i]][,c("Breeding.Batch","Behavior.Batch","RIX","Diet","dir","CC_lab")], 2, as.factor)
+  data_kmers_list[[i]][,c("CC_1","CC_2","sum","kRat","kLB","kUB")] = 
+    apply(data_kmers_list[[i]][,c("CC_1","CC_2","sum","kRat","kLB","kUB")], 2, as.numeric)
+}
 
-ratios_lst[[c]] = run_stan_regress(data_kmers=data_kmers[[c]], 
-                                   niter=10000, n.thin=5,  
-                                   seg_regions=seg_regions,
-                                   save_dir=NULL, 
-                                   STZ=T, use_gene=F,
-                                   no_theta=F, alpha=NULL,
-                                   stan=F, stanMod = "ase_mu_g_simple.stan")
+ratios_lst = list()
+for(c in 1:length(data_kmers_list)){
+  ratios_lst[[c]] = run_stan_regress(data_kmers=data_kmers_list[[c]], 
+                                     niter=10000, n.thin=5,  
+                                     seg_regions=seg_regions,
+                                     save_dir=NULL, 
+                                     STZ=T, use_gene=F,
+                                     no_theta=F, alpha=NULL,
+                                     stan=F, stanMod = "ase_mu_g_simple.stan")
+}
 
+binom_test_pvals = lapply(ratios_lst, function(x)
+  do.call("rbind", sapply(1:length(x), function(y) {
+    tmp = data.frame(do.call("rbind", lapply(x[[y]]$freq, function(z) 
+      c(z$statistic, z$parameter, z$p.value, as.vector(z$conf.int), z$estimate))))
+    colnames(tmp) = c("n.success", "n.trial", "p.value", "lower", "upper", "est")
+    tmp$Gene.Name = rownames(tmp)
+    tmp$RIX = names(x)[[y]]
+    tmp
+  }, simplify=F))
+)
+
+binom_test_pvals = do.call("rbind", binom_test_pvals)
 
 ##############  fisher  ##################
+pval_list = lapply(unique(binom_test_pvals$Gene.Name), function(x) binom_test_pvals %>% filter(Gene.Name == x))
 
 pmat = do.call("rbind", lapply(pval_list, function(g){
-  data.frame(-2*sum(log(g$x.p.value)), nrow(g))
+  data.frame(-2*sum(log(g$p.value)), nrow(g))
 }))
-
 #pmat=do.call("rbind",pmat)
 colnames(pmat) = c("fisher_stat", "n")
-pmat$gene = unique(pvals$gene)
+pmat$gene = unique(binom_test_pvals$Gene.Name)
 
 hist(pmat$fisher_stat, breaks=900)
-curve(dchisq(x, df = length(unique(pvals$rix))*2)*nrow(pmat), from=0, to=150, col="blue", add=T)
+curve(dchisq(x, df = length(unique(binom_test_pvals$RIX))*2)*nrow(pmat), from=0, to=150, col="blue", add=T)
 
 pmat$fisher_p = unlist(lapply(1:nrow(pmat), function(x)
   pchisq(pmat$fisher_stat[x], df=(as.numeric(paste(pmat$n[x]))*2),lower.tail = F)))
@@ -236,10 +265,10 @@ pmat$padj = p.adjust(pmat$fisher_p, method = "BH")
 
 pmat$ie    = ifelse(pmat$gene %in% ie_genes$mgi_symbol, T, F)
 pmat$gregg = ifelse(pmat$gene %in% gregg_genes$Gene.Name, T, F)
-pmat$de    = ifelse(pmat$gene %in% de_genes$V1, T, F)
+pmat$de    = ifelse(pmat$gene %in% de_genes, T, F)
 pmat %>% arrange(fisher_p)
 
-pmat %>% filter(!ie, de) %>% arrange(fisher_p)
+pmat %>% filter(ie, de) %>% arrange(fisher_p)
 ## Gnas, Wars, Meg3
 ## 100 ie but not de
 ## 114 de but not ie
