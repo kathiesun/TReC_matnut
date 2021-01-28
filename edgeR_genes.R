@@ -18,9 +18,9 @@ dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
 
 #matnut <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
 matnut = read.csv(file.path(dir,'matnut_main/AllMice_GeneExpression_SSupdated_11.27.19.csv'))
-#gene_count_all <- read.csv(file.path(dir,'/trec/gene_count_matrix.csv'))
-gene_count <- read.csv(file.path(dir,'/trec/gene_count_matrix_hetsOnly.csv'))
-rownames(gene_count) = gene_count$Gene.Name
+gene_count <- read.csv(file.path(dir,'/trec/gene_count_matrix.csv'))
+gene_count_red <- read.csv(file.path(dir,'/trec/gene_count_matrix_hetsOnly.csv'))
+rownames(gene_count_red) = gene_count_red$Gene.Name
 
 #gene_counts_files = list.files(file.path(dir,"/trec/geneCounts_for_deseq2"), full.names=T)
 #pups = do.call("rbind", strsplit(gene_counts_files, "/|_"))[,11]
@@ -30,8 +30,8 @@ rownames(gene_count) = gene_count$Gene.Name
 #genes = read.csv("../deseq2/priorityTryGenes_16dec2020.csv", header=F)
 
 #colnames(gene_count)[1] = "gene_id"
-#gene_count$Gene.ID = do.call("rbind",(strsplit(as.character(gene_count$gene_id), "[|]")))[,1]
-#gene_count$Gene.Name = do.call("rbind", (strsplit(as.character(gene_count$gene_id), "[|]")))[,2]
+gene_count$Gene.ID = do.call("rbind",(strsplit(as.character(gene_count$gene_id), "[|]")))[,1]
+gene_count$Gene.Name = do.call("rbind", (strsplit(as.character(gene_count$gene_id), "[|]")))[,2]
 
 samples = colnames(gene_count)[grep("Pup", colnames(gene_count))]
 matnut$ID = paste0("Pup.ID_",matnut$Pup.ID)
@@ -73,15 +73,19 @@ length(which(!gene_count$Gene.Name %in% annot_genes$Gene.Name))
 gene_count = gene_count %>% filter(Gene.Name %in% annot_genes$Gene.Name)
 
 if(any(duplicated(gene_count$Gene.Name))) gene_count = data.frame(gene_count[-which(duplicated(gene_count$Gene.Name)),])
+rownames(gene_count) = gene_count$Gene.Name
+
 #gene_annot = left_join(gene_count, annot_genes, by="Gene.Name")
 gene_count = gene_count[, grep("Pup.ID", colnames(gene_count))]
-
+gene_count = gene_count[,which(colnames(gene_count) %in% colnames(gene_count_red))]
+gene_count_red = gene_count_red[,colnames(gene_count)[match(colnames(gene_count), colnames(gene_count_red))]]
 colData = matnut[match(colnames(gene_count),matnut$ID),c("Breeding.Batch","Behavior.Batch","RIX","Reciprocal","Diet",
                                                      "Dam.ID","ID","PO","DietRIX","DietRIXPOq")]
+
 ##################  DESeq2  ##########################
 #colData = colData %>% arrange(RIX, Diet, PO)
 
-dds_list = list()
+dds_list = het_genes = list()
 for(r in levels(matnut$RIX)){
   colData_tmp = colData %>% filter(RIX == r)
   colData_tmp$Diet = factor(colData_tmp$Diet, 
@@ -93,7 +97,8 @@ for(r in levels(matnut$RIX)){
   colData_tmp$DietRIXPOq = factor(colData_tmp$DietRIXPOq, levels=poss_diet_PO)
   
   gene_count_tmp = gene_count %>% select(one_of(colData_tmp$ID))
-
+  gene_count_red_tmp = gene_count_red %>% select(one_of(colData_tmp$ID))
+  
   Diet = colData_tmp$Diet
   PO = colData_tmp$PO
   DietRIX = colData_tmp$DietRIX
@@ -107,6 +112,7 @@ for(r in levels(matnut$RIX)){
   
   rownames(colData_tmp) = colData_tmp$ID
   cts = gene_count_tmp[complete.cases(gene_count_tmp),match(colData_tmp$ID, colnames(gene_count_tmp))]
+  het_genes[[r]] = rownames(gene_count_red_tmp)[complete.cases(gene_count_red_tmp)]
   all(rownames(colData_tmp) == colnames(cts))
   dds <- DESeqDataSetFromMatrix(countData = cts, 
                                 colData = colData_tmp,
@@ -137,10 +143,10 @@ for(r in levels(matnut$RIX)){
 }
 
 #dds = readRDS(file.path(dir,"de_results/deseq_28dec2020.rds"))
-res <- results(dds)
+#res <- results(dds)
 
 #saveRDS(dds_list, file.path(dir,"de_results/dds_list_hetReg_sepRIX_19jan2021.rds"))
-
+dds_list = readRDS(file.path(dir,"de_results/dds_list_hetReg_sepRIX_19jan2021.rds"))
 
 POres_list = lapply(dds_list, function(x) results(x, name="PO"))
 POres_Ordered <- lapply(POres_list, function(x) x[order(x$pvalue),])
@@ -153,7 +159,7 @@ deseq_sig = sort(table(unlist(lapply(POres_Ordered, function(x) rownames(x[which
 genes = unique(unlist(lapply(sig_genes_short, function(x) x[1:min(5,length(x))])))
 genes = unique(unlist(sig_genes_short))  ## 205
 genes = unique(unlist(sig_genes_list))   ## 327
-write.table(genes, file.path(dir, "trec/priority_deseq_genes_11jan2021.txt"),
+write.table(genes, file.path(dir, "trec/priority_deseq_genes_26jan2021.txt"),
             row.names = F, quote = F, col.names=F)
 keep_genes = imp_perc$Gene.Name[which(imp_perc$Gene.Name %in% genes)]
 keep_genes = c("Bcl2l1", "Sh3bgr", "Bag3", "Idh3a", "Adam23", "R3hdm4", "Prkd1", "Grik5")

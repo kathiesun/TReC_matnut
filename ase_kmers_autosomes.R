@@ -1,3 +1,5 @@
+options(digits=4)
+
 setwd("C:/Users/Kathie/TReC_matnut/src")
 library(tidyverse)
 library(fdrtool)
@@ -15,10 +17,13 @@ C_diet_4 = read.csv(file.path(dir, "variant_data/C_matrix_4diets.csv"), header=F
 C_diet_2 = read.csv(file.path(dir, "variant_data/C_matrix_2diets.csv"), header=F)
 C_diet_3 = matrix(c(0.9659258,-0.2588190,-0.7071068,-0.2588190,0.9659258,-0.7071068),nrow=3,ncol=2)
 
-gene_count <- read.csv(file.path(dir,'/trec/gene_count_matrix.csv'))
-colnames(gene_count)[1] = "gene_id"
-gene_count$Gene.ID = do.call("rbind",(strsplit(as.character(gene_count$gene_id), "[|]")))[,1]
-gene_count$Gene.Name = do.call("rbind", (strsplit(as.character(gene_count$gene_id), "[|]")))[,2]
+#gene_count <- read.csv(file.path(dir,'/trec/gene_count_matrix.csv'))
+#colnames(gene_count)[1] = "gene_id"
+#gene_count$Gene.ID = do.call("rbind",(strsplit(as.character(gene_count$gene_id), "[|]")))[,1]
+#gene_count$Gene.Name = do.call("rbind", (strsplit(as.character(gene_count$gene_id), "[|]")))[,2]
+
+gene_count <- read.csv(file.path(dir,'/trec/gene_count_matrix_hetsOnly.csv'))
+rownames(gene_count) = gene_count$Gene.Name
 samples = colnames(gene_count)[grep("Pup", colnames(gene_count))]
 
 matnut = read.csv(file.path(dir,'matnut_main/AllMice_GeneExpression_SSupdated_11.27.19.csv'))
@@ -36,8 +41,8 @@ matnut$RIX = factor(matnut$RIX, levels = c(1:4,6:10))
 map = read.csv(file.path(dir,"mini/combined_map_cs_gbrs_allmarkers_17mar2020.csv"))
 encoded <- getEncoding(matnut, terms = c("RIX","Diet","DietRIX"))
 
-gene_count = data.frame(gene_count[-which(duplicated(gene_count$Gene.Name)),])
-rownames(gene_count) = gene_count$Gene.Name
+#gene_count = data.frame(gene_count[-which(duplicated(gene_count$Gene.Name)),])
+#rownames(gene_count) = gene_count$Gene.Name
 counts = gene_count[, grep("Pup.ID", colnames(gene_count))]
 
 colData = matnut[match(colnames(counts),matnut$ID),
@@ -112,7 +117,7 @@ gregg_ie  = unique(gregg_genes$Gene.Name)[which(unique(gregg_genes$Gene.Name) %i
 gregg_ase = unique(gregg_genes$Gene.Name)[which(unique(gregg_genes$Gene.Name) %in% imp_perc$Gene.Name)]
 gregg_des = unique(gregg_genes$Gene.Name)[which(unique(gregg_genes$Gene.Name) %in% unlist(sig_genes_list))]
 
-de_genes = read.table(file.path(dir, "trec/priority_deseq_genes_11jan2021.txt"))
+de_genes = read.table(file.path(dir, "trec/priority_deseq_genes_26jan2021.txt"))
 ase_genes = read.csv(file.path(dir, "trec/priority_ase_genes_11jan2021.csv"))
 
 all_genes = unique(c(gregg_genes$Gene.Name, de_genes$V1, ase_genes$Gene.Name, ie_genes$mgi_symbol))
@@ -203,19 +208,44 @@ pval_list = lapply(unique(pvals$gene), function(x) pvals[which(pvals$gene == x),
 
 files = list.files(file.path(dir, "trec/data_kmers_from_process_and_plot/"), pattern=".txt",
                    full.names = T)
-data_kmers_list = lapply(files, read.table, sep="\n")
-data_kmers_list = lapply(data_kmers_list, function(x) 
-  do.call("rbind", data.frame(apply(x, 1, function(y) strsplit(y," ")))))
+
+
+#data_kmers_list = saveRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_26jan2021.rds"))
+data_kmers_list = readRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_26jan2021.rds"))
+
+#data_kmers_list = lapply(files, read.table, sep="\n")
+#data_kmers_list = lapply(data_kmers_list, function(x) 
+#  do.call("rbind", data.frame(apply(x, 1, function(y) strsplit(y," ")))))
 
 for(i in 1:length(data_kmers_list)){
-  colnames(data_kmers_list[[i]]) = data_kmers_list[[i]][1,]
-  data_kmers_list[[i]] = data_kmers_list[[i]][-1,]
-  rownames(data_kmers_list[[i]]) = NULL
+  #colnames(data_kmers_list[[i]]) = data_kmers_list[[i]][1,]
+  #data_kmers_list[[i]] = data_kmers_list[[i]][-1,]
+  #rownames(data_kmers_list[[i]]) = NULL
   data_kmers_list[[i]] = data.frame(data_kmers_list[[i]])
-  data_kmers_list[[i]][,c("Breeding.Batch","Behavior.Batch","RIX","Diet","dir","CC_lab")] = 
-    apply(data_kmers_list[[i]][,c("Breeding.Batch","Behavior.Batch","RIX","Diet","dir","CC_lab")], 2, as.factor)
   data_kmers_list[[i]][,c("CC_1","CC_2","sum","kRat","kLB","kUB")] = 
     apply(data_kmers_list[[i]][,c("CC_1","CC_2","sum","kRat","kLB","kUB")], 2, as.numeric)
+  data_kmers_list[[i]]$Pup.ID = as.numeric(data_kmers_list[[i]]$Pup.ID)
+  data_kmers_list[[i]] = data_kmers_list[[i]] %>% left_join(lab[, -which(colnames(lab) == "RRIX")], by="Pup.ID")
+  data_kmers_list[[i]]$DamLine_NewCC_ID = unlist(strsplit(data_kmers_list[[i]]$DamLine_NewCC_ID, "/"))[c(T,F)]
+  data_kmers_list[[i]]$SireLine_NewCC_ID = unlist(strsplit(data_kmers_list[[i]]$SireLine_NewCC_ID, "/"))[c(T,F)]
+  data_kmers_list[[i]]$l_count = data_kmers_list[[i]]$CC_1
+  data_kmers_list[[i]]$r_count = data_kmers_list[[i]]$CC_2
+  data_kmers_list[[i]]$mat_count = data_kmers_list[[i]]$CC_1
+  data_kmers_list[[i]]$pat_count = data_kmers_list[[i]]$CC_2
+  
+  data_kmers_list[[i]]$mat_count[which(data_kmers_list[[i]]$DamLine_NewCC_ID == data_kmers_list[[i]]$CC.2)] = 
+    data_kmers_list[[i]]$CC_2[which(data_kmers_list[[i]]$DamLine_NewCC_ID == data_kmers_list[[i]]$CC.2)]
+  data_kmers_list[[i]]$pat_count[which(data_kmers_list[[i]]$SireLine_NewCC_ID == data_kmers_list[[i]]$CC.1)] = 
+    data_kmers_list[[i]]$CC_1[which(data_kmers_list[[i]]$SireLine_NewCC_ID == data_kmers_list[[i]]$CC.1)]
+  data_kmers_list[[i]]$CC_1 = data_kmers_list[[i]]$mat_count
+  data_kmers_list[[i]]$CC_2 = data_kmers_list[[i]]$pat_count
+  data_kmers_list[[i]]$mat_count = data_kmers_list[[i]]$pat_count = NULL
+  data_kmers_list[[i]]$CC_lab = paste(data_kmers_list[[i]]$DamLine_NewCC_ID,data_kmers_list[[i]]$SireLine_NewCC_ID, sep="/")
+  data_kmers_list[[i]] = data_kmers_list[[i]] %>% select(one_of("seq.Gene","seq.Chromosome","seq.rsId","seq.Position",
+                            "CC_1","CC_2","sum","CC1_hap","CC2_hap",
+                            "Pup.ID","CCs","logSum","Breeding.Batch","Behavior.Batch","RIX","Reciprocal","Diet",
+                            "DamLine_NewCC_ID","Dam.ID","SireLine_NewCC_ID", "Sire.ID",
+                            "CC_lab","RRIX","pup_gene","DietRIX","CC.1","CC.2","l_count","r_count"))
 }
 
 ratios_lst = list()
@@ -229,6 +259,55 @@ for(c in 1:length(data_kmers_list)){
                                      stan=F, stanMod = "ase_mu_g_simple.stan")
 }
 
+#saveRDS(data_kmers_list, file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_26jan2021.rds"))
+
+ratios_lst = readRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/ratios_lst_out_26jan2021.rds"))
+
+
+total_counts = lapply(data_kmers_list, function(x) 
+  x %>% group_by(seq.Gene, seq.Chromosome, Pup.ID, Reciprocal, Diet) %>%
+    summarize(sum_1 = sum(CC_1), sum_2 = sum(CC_2), sum_tot = sum(sum), 
+              pos = mean(as.numeric(seq.Position)),
+              ratio = sum_1 / sum_tot))
+
+total_counts = do.call("rbind", total_counts)
+total_counts$stringtie_cts = NA
+total_counts$RRIX = gsub("[a-z]","",total_counts$Reciprocal)
+total_counts$PO   = gsub("[0-9]","",total_counts$Reciprocal)
+for(i in grep("Pup.ID", colnames(gene_count))){
+  coln = grep("Pup.ID", colnames(gene_count))[i]
+  pup = unlist(strsplit(colnames(gene_count)[coln], "_"))[c(F,T)]
+  tmp = total_counts[which(total_counts$Pup.ID == pup),]
+  #gene_count[match(tmp$seq.Gene, rownames(gene_count)), coln]
+  total_counts$stringtie_cts[which(total_counts$Pup.ID == pup)] = gene_count[match(tmp$seq.Gene, rownames(gene_count)), coln]
+}
+
+plot_tot_counts = total_counts %>% filter(!is.na(stringtie_cts)) %>%
+  group_by(Pup.ID) %>% mutate(norm_tot = sum_tot / sd(sum_tot), 
+                              norm_str = stringtie_cts / sd(stringtie_cts),
+                              log_norm_tot = log(norm_tot+0.5), 
+                              log_norm_str = log(norm_str+0.5),
+                              ratio = norm_str / (norm_tot + norm_str))
+p_list = list()
+for(i in unique(plot_tot_counts$seq.Chromosome)){
+  pdf = plot_tot_counts %>% filter(seq.Chromosome == i)
+  p_list[[i]] = ggplot(pdf, aes(x=pos)) + 
+    geom_line(aes(y=log_norm_tot), col="blue") + 
+    geom_line(aes(y=log_norm_str), col="red") + 
+    #geom_line(aes(y=ratio), col="blue") + 
+    #ylim(0, 5) + 
+    theme_classic() + 
+    facet_wrap( ~ RRIX)
+}
+
+
+counts_per_pup = lapply(unique(total_counts$Pup.ID), function(x)
+  total_counts %>% filter(Pup.ID == x, !is.na(stringtie_cts)))
+
+##############  fisher  ##################
+
+
+
 binom_test_pvals = lapply(ratios_lst, function(x)
   do.call("rbind", sapply(1:length(x), function(y) {
     tmp = data.frame(do.call("rbind", lapply(x[[y]]$freq, function(z) 
@@ -241,37 +320,87 @@ binom_test_pvals = lapply(ratios_lst, function(x)
 )
 
 binom_test_pvals = do.call("rbind", binom_test_pvals)
+binom_test_pvals$offset = abs(binom_test_pvals$est - 0.5)
 
-##############  fisher  ##################
 pval_list = lapply(unique(binom_test_pvals$Gene.Name), function(x) binom_test_pvals %>% filter(Gene.Name == x))
 
-pmat = do.call("rbind", lapply(pval_list, function(g){
+pmat = data.frame(apply(do.call("rbind", lapply(pval_list, function(g){
   data.frame(-2*sum(log(g$p.value)), nrow(g))
-}))
+})), 2, as.numeric))
 #pmat=do.call("rbind",pmat)
 colnames(pmat) = c("fisher_stat", "n")
-pmat$gene = unique(binom_test_pvals$Gene.Name)
+rownames(pmat) = unique(binom_test_pvals$Gene.Name)
 
-hist(pmat$fisher_stat, breaks=900)
+
+hist(pmat$fisher_stat, breaks=200)
 curve(dchisq(x, df = length(unique(binom_test_pvals$RIX))*2)*nrow(pmat), from=0, to=150, col="blue", add=T)
 
 pmat$fisher_p = unlist(lapply(1:nrow(pmat), function(x)
   pchisq(pmat$fisher_stat[x], df=(as.numeric(paste(pmat$n[x]))*2),lower.tail = F)))
 
 fdr = fdrtool(x = pmat$fisher_p, statistic = "pvalue")
-pmat$padj_qval = fdr$qval
-pmat$padj_fdr  = fdr$lfdr
-pmat$padj = p.adjust(pmat$fisher_p, method = "BH")
+pmat$padj_qval = as.numeric(fdr$qval)
+pmat$padj_fdr  = as.numeric(fdr$lfdr)
+pmat$padj = as.numeric(p.adjust(pmat$fisher_p, method = "BH"))
 
-pmat$ie    = ifelse(pmat$gene %in% ie_genes$mgi_symbol, T, F)
-pmat$gregg = ifelse(pmat$gene %in% gregg_genes$Gene.Name, T, F)
-pmat$de    = ifelse(pmat$gene %in% de_genes, T, F)
+
+pmat$ie    = ifelse(rownames(pmat) %in% ie_genes$mgi_symbol, T, F)
+pmat$gregg = ifelse(rownames(pmat) %in% gregg_genes$Gene.Name, T, F)
+pmat$de    = ifelse(rownames(pmat) %in% de_genes$V1, T, F)
 pmat %>% arrange(fisher_p)
 
-pmat %>% filter(ie, de) %>% arrange(fisher_p)
-## Gnas, Wars, Meg3
+pmat %>% filter(ie, padj_fdr<0.05) %>% arrange(desc(fisher_stat))
+pmat %>% filter(!ie, padj_fdr<0.05, de) %>% arrange(desc(fisher_stat))
+
+## Gnas ### Wars, Meg3 (not anymore)
 ## 100 ie but not de
 ## 114 de but not ie
+
+genes = rownames(pmat %>% filter(padj_fdr < 1/length(unique(total_counts$seq.Gene)), !ie, n > 2) %>% arrange(padj_fdr))
+genes = rownames(pmat %>% filter(padj_fdr < 1e-4, !ie, de) %>% arrange(desc(fisher_stat)))
+genes = rownames(pmat %>% filter(!ie, gregg) %>% arrange(desc(fisher_stat)))
+genes = rownames(pmat %>% filter(!ie, padj_fdr<0.05, de) %>% arrange(desc(fisher_stat)))
+
+hi_rat = total_counts %>% ungroup() %>%
+  group_by(seq.Gene) %>%
+  mutate(ratio_m = sum_1 / sum_tot) %>%
+  summarize(mean_rat = mean(ratio_m), n=n()) %>%
+  arrange(desc(mean_rat)) %>%
+  filter(mean_rat > 0.55 | mean_rat < 0.45, !seq.Gene %in% ie_genes$mgi_symbol)
+genes = genes[which(genes %in% hi_rat$seq.Gene)]
+
+geneUse = "Eef2"
+geneUse = "Inpp5f"
+geneUse = "Igf2"
+geneUse = "Gatad1"
+geneUse = "Inpp5f"
+
+p_list = list()
+p_list_non_ie = list()
+
+for(g in genes){
+  geneUse = g
+  plot_gene = total_counts %>% filter(seq.Gene == geneUse) %>%
+    mutate(ratio = sum_1 / sum_tot,
+           PO = gsub("[0-9]", "", Reciprocal))
+  jitter <- position_jitter(width = 0.1, height = 0)
+  p_list_non_ie[[g]] = ggplot(plot_gene, aes(x=PO)) +                        
+    geom_point(aes(y=sum_1), position=jitter, col="red") + 
+    geom_point(aes(y=sum_2), position=jitter, col="blue") + 
+    #geom_point(aes(y = ratio)) +
+    facet_grid(~ RRIX) + 
+    labs(title = geneUse,
+         y = "Counts", x="POE direction") +
+    theme_classic()
+}
+
+pdf(file.path(dir,'trec/de_IE_gene_plots.pdf'))
+lapply(p_list, print)
+dev.off()
+
+pdf(file.path(dir,'trec/de_nonIE_DE_gene_plots.pdf'))
+lapply(p_list_non_ie, print)
+dev.off()
 
 
 
