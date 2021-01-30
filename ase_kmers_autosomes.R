@@ -364,10 +364,10 @@ genes = rownames(pmat %>% filter(!ie, padj_fdr<0.05, de) %>% arrange(desc(fisher
 hi_rat = total_counts %>% ungroup() %>%
   group_by(seq.Gene) %>%
   mutate(ratio_m = sum_1 / sum_tot) %>%
-  summarize(mean_rat = mean(ratio_m), n=n()) %>%
-  arrange(desc(mean_rat)) %>%
-  filter(mean_rat > 0.55 | mean_rat < 0.45, !seq.Gene %in% ie_genes$mgi_symbol)
-genes = genes[which(genes %in% hi_rat$seq.Gene)]
+  summarize(mean_rat = mean(ratio_m), n=n(), abs_rat = abs(mean_rat - 0.5)) %>%
+  arrange(desc(abs_rat)) %>%
+  filter(abs_rat > 0.1, mean_rat < 1, n > 4, !seq.Gene %in% ie_genes$mgi_symbol)
+genes = hi_rat$seq.Gene[which(hi_rat$seq.Gene %in% genes)]
 
 geneUse = "Eef2"
 geneUse = "Inpp5f"
@@ -402,7 +402,7 @@ pdf(file.path(dir,'trec/de_nonIE_DE_gene_plots.pdf'))
 lapply(p_list_non_ie, print)
 dev.off()
 
-
+#Fbn1, Lrrc48, Ndnf
 
 
 fdr = fdrtool(x = pmat$fisher_p, statistic = "pvalue")
