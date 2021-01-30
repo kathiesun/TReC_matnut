@@ -36,7 +36,7 @@ encoded <- getEncoding(matnut, terms = c("RIX","Diet","DietRIX"))
 
 ################################################################
 
-indiv_pups = list.files(file.path(dir, "mini/pup_haplo_blocks_by_CC_parent_dec2019"), pattern="haploBlocks", full.names = T)
+indiv_pups = list.files(file.path(dir, "mini/jan2021_pup_haplo_blocks_by_CC_parent"), pattern="haploBlocks", full.names = T)
 
 phased_CC_haplotype = lapply(indiv_pups, readRDS)
 tmp = do.call("rbind", lapply(indiv_pups, function(x) unlist(strsplit(x, "_"))))
@@ -94,7 +94,7 @@ data_kmers = ratios_lst = list()
   
   #data_kmers$podietrix = paste(data_kmers$dir, data_kmers$DietRIX, sep="_")
 	print(c)
-  write.table(data_kmers[[c]], paste0(dir, "//ase_autosomes/data_kmers_from_process_and_plot/chr_",c,"_18jan2021.txt"), quote=F, row.names=F)
+  write.table(data_kmers[[c]], paste0(dir, "//ase_autosomes/data_kmers_from_process_and_plot/chr_",c,"_29jan2021.txt"), quote=F, row.names=F)
 
  # ratios_lst[[c]] = run_stan_regress(data_kmers=data_kmers[[c]], 
  #                                    niter=10000, n.thin=5,  

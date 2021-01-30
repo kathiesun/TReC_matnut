@@ -64,7 +64,7 @@ gene_count = gene_count %>% filter(Gene.Name %in% annot_genes$Gene.Name)
 if(any(duplicated(gene_count$Gene.Name))) gene_count = data.frame(gene_count[-which(duplicated(gene_count$Gene.Name)),])
 gene_annot = left_join(gene_count, annot_genes, by="Gene.Name")
 
-indiv_pups = list.files(file.path(dir, "mini/pup_haplo_blocks_by_CC_parent_dec2019"), pattern="haploBlocks", full.names = T)
+indiv_pups = list.files(file.path(dir, "mini/jan2021_pup_haplo_blocks_by_CC_parent"), pattern="haploBlocks", full.names = T)
 phased_CC_haplotype = lapply(indiv_pups, readRDS)
 tmp = do.call("rbind", lapply(indiv_pups, function(x) unlist(strsplit(x, "_"))))
 names(phased_CC_haplotype) = paste0("Pup.ID_", tmp[,ncol(tmp)-1])
@@ -104,5 +104,5 @@ x = names(phased_CC_haplotype)[p]
 #het_counts = data.frame(do.call("cbind", het_counts))
 
 
-write.table(het_counts, paste0(dir,"/trec/geneCounts_", x, "_hetRegions.txt"),
+write.table(het_counts, paste0(dir,"/trec/hetReg_jan2021/geneCounts_", x, "_hetRegions.txt"),
             row.names=F, col.names = F )
