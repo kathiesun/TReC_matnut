@@ -117,15 +117,16 @@ gregg_ie  = unique(gregg_genes$Gene.Name)[which(unique(gregg_genes$Gene.Name) %i
 gregg_ase = unique(gregg_genes$Gene.Name)[which(unique(gregg_genes$Gene.Name) %in% imp_perc$Gene.Name)]
 gregg_des = unique(gregg_genes$Gene.Name)[which(unique(gregg_genes$Gene.Name) %in% unlist(sig_genes_list))]
 
-de_genes = read.table(file.path(dir, "trec/priority_deseq_genes_26jan2021.txt"))
+#de_genes = read.table(file.path(dir, "trec/priority_deseq_genes_26jan2021.txt"))
+de_genes = read.csv(file.path(dir, "trec/priority_deseq_genes_30jan2021.csv"))
 ase_genes = read.csv(file.path(dir, "trec/priority_ase_genes_11jan2021.csv"))
 
-all_genes = unique(c(gregg_genes$Gene.Name, de_genes$V1, ase_genes$Gene.Name, ie_genes$mgi_symbol))
+all_genes = unique(c(gregg_genes$Gene.Name, de_genes$gene, ase_genes$Gene.Name, ie_genes$mgi_symbol))
 
 ################################################################
 
 
-indiv_pups = list.files(file.path(dir, "mini/pup_haplo_blocks_by_CC_parent_dec2019"), pattern="haploBlocks", full.names = T)
+indiv_pups = list.files(file.path(dir, "mini/pup_haplo_blocks_by_CC_parent_jan2021"), pattern="haploBlocks", full.names = T)
 
 phased_CC_haplotype = lapply(indiv_pups, readRDS)
 tmp = do.call("rbind", lapply(indiv_pups, function(x) unlist(strsplit(x, "_"))))
@@ -138,8 +139,13 @@ count_files <- list.files(file.path(dir,"variant_data/kmer_counts"), ".csv", ful
 ## CC labels
 #lab = read.csv("C:/Users/Kathie/Dropbox (ValdarLab)/variant_data/matched_v2_4jun2018.csv")
 lab = read.csv(file.path(dir, "matnut_main/matched_v2_4jun2018.csv"))
-lab %>% dplyr::select(one_of("Pup.ID","RRIX", "CC.1","CC.2")) %>%
-  filter(!is.na(Pup.ID)) -> lab
+lab = read.csv(file.path(dir, "matnut_main/CC_labels_paternity.csv"))
+#lab %>% dplyr::select(one_of("Pup.ID","RRIX", "CC.1","CC.2")) %>%
+#  filter(!is.na(Pup.ID)) -> lab
+
+
+
+
 
 ## Pup demographic info
 pupInfo = matnut[,c(1,2,4,5,8,10,12,13,16,17)]
@@ -210,43 +216,50 @@ files = list.files(file.path(dir, "trec/data_kmers_from_process_and_plot/"), pat
                    full.names = T)
 
 
-#data_kmers_list = saveRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_26jan2021.rds"))
-data_kmers_list = readRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_26jan2021.rds"))
+#data_kmers_list = saveRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_29jan2021.rds"))
+data_kmers_list = readRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_29jan2021.rds"))
+
+
+lab = unique(do.call("rbind", lapply(data_kmers_list, function(x) 
+  x[,c("Pup.ID","CCs","RIX","Reciprocal","DamLine_NewCC_ID","SireLine_NewCC_ID","CC_lab","RRIX","CC.1","CC.2" )]
+  )))
+
+
 
 #data_kmers_list = lapply(files, read.table, sep="\n")
 #data_kmers_list = lapply(data_kmers_list, function(x) 
 #  do.call("rbind", data.frame(apply(x, 1, function(y) strsplit(y," ")))))
 
-for(i in 1:length(data_kmers_list)){
-  #colnames(data_kmers_list[[i]]) = data_kmers_list[[i]][1,]
-  #data_kmers_list[[i]] = data_kmers_list[[i]][-1,]
-  #rownames(data_kmers_list[[i]]) = NULL
-  data_kmers_list[[i]] = data.frame(data_kmers_list[[i]])
-  data_kmers_list[[i]][,c("CC_1","CC_2","sum","kRat","kLB","kUB")] = 
-    apply(data_kmers_list[[i]][,c("CC_1","CC_2","sum","kRat","kLB","kUB")], 2, as.numeric)
-  data_kmers_list[[i]]$Pup.ID = as.numeric(data_kmers_list[[i]]$Pup.ID)
-  data_kmers_list[[i]] = data_kmers_list[[i]] %>% left_join(lab[, -which(colnames(lab) == "RRIX")], by="Pup.ID")
-  data_kmers_list[[i]]$DamLine_NewCC_ID = unlist(strsplit(data_kmers_list[[i]]$DamLine_NewCC_ID, "/"))[c(T,F)]
-  data_kmers_list[[i]]$SireLine_NewCC_ID = unlist(strsplit(data_kmers_list[[i]]$SireLine_NewCC_ID, "/"))[c(T,F)]
-  data_kmers_list[[i]]$l_count = data_kmers_list[[i]]$CC_1
-  data_kmers_list[[i]]$r_count = data_kmers_list[[i]]$CC_2
-  data_kmers_list[[i]]$mat_count = data_kmers_list[[i]]$CC_1
-  data_kmers_list[[i]]$pat_count = data_kmers_list[[i]]$CC_2
+#for(i in 1:length(data_kmers_list)){
+#  colnames(data_kmers_list[[i]]) = data_kmers_list[[i]][1,]
+#  data_kmers_list[[i]] = data_kmers_list[[i]][-1,]
+#  rownames(data_kmers_list[[i]]) = NULL
+#  data_kmers_list[[i]] = data.frame(data_kmers_list[[i]])
+#  data_kmers_list[[i]][,c("CC_1","CC_2","sum","kRat","kLB","kUB")] = 
+#    apply(data_kmers_list[[i]][,c("CC_1","CC_2","sum","kRat","kLB","kUB")], 2, as.numeric)
+#  data_kmers_list[[i]]$Pup.ID = as.numeric(data_kmers_list[[i]]$Pup.ID)
+#  data_kmers_list[[i]] = data_kmers_list[[i]] %>% left_join(lab[, -which(colnames(lab) == "RRIX")], by="Pup.ID")
+#  data_kmers_list[[i]]$DamLine_NewCC_ID = unlist(strsplit(data_kmers_list[[i]]$DamLine_NewCC_ID, "/"))[c(T,F)]
+#  data_kmers_list[[i]]$SireLine_NewCC_ID = unlist(strsplit(data_kmers_list[[i]]$SireLine_NewCC_ID, "/"))[c(T,F)]
+#  data_kmers_list[[i]]$l_count = data_kmers_list[[i]]$CC_1
+#  data_kmers_list[[i]]$r_count = data_kmers_list[[i]]$CC_2
+#  data_kmers_list[[i]]$mat_count = data_kmers_list[[i]]$CC_1
+#  data_kmers_list[[i]]$pat_count = data_kmers_list[[i]]$CC_2
   
-  data_kmers_list[[i]]$mat_count[which(data_kmers_list[[i]]$DamLine_NewCC_ID == data_kmers_list[[i]]$CC.2)] = 
-    data_kmers_list[[i]]$CC_2[which(data_kmers_list[[i]]$DamLine_NewCC_ID == data_kmers_list[[i]]$CC.2)]
-  data_kmers_list[[i]]$pat_count[which(data_kmers_list[[i]]$SireLine_NewCC_ID == data_kmers_list[[i]]$CC.1)] = 
-    data_kmers_list[[i]]$CC_1[which(data_kmers_list[[i]]$SireLine_NewCC_ID == data_kmers_list[[i]]$CC.1)]
-  data_kmers_list[[i]]$CC_1 = data_kmers_list[[i]]$mat_count
-  data_kmers_list[[i]]$CC_2 = data_kmers_list[[i]]$pat_count
-  data_kmers_list[[i]]$mat_count = data_kmers_list[[i]]$pat_count = NULL
-  data_kmers_list[[i]]$CC_lab = paste(data_kmers_list[[i]]$DamLine_NewCC_ID,data_kmers_list[[i]]$SireLine_NewCC_ID, sep="/")
-  data_kmers_list[[i]] = data_kmers_list[[i]] %>% select(one_of("seq.Gene","seq.Chromosome","seq.rsId","seq.Position",
-                            "CC_1","CC_2","sum","CC1_hap","CC2_hap",
-                            "Pup.ID","CCs","logSum","Breeding.Batch","Behavior.Batch","RIX","Reciprocal","Diet",
-                            "DamLine_NewCC_ID","Dam.ID","SireLine_NewCC_ID", "Sire.ID",
-                            "CC_lab","RRIX","pup_gene","DietRIX","CC.1","CC.2","l_count","r_count"))
-}
+#  data_kmers_list[[i]]$mat_count[which(data_kmers_list[[i]]$DamLine_NewCC_ID == data_kmers_list[[i]]$CC.2)] = 
+#    data_kmers_list[[i]]$CC_2[which(data_kmers_list[[i]]$DamLine_NewCC_ID == data_kmers_list[[i]]$CC.2)]
+#  data_kmers_list[[i]]$pat_count[which(data_kmers_list[[i]]$SireLine_NewCC_ID == data_kmers_list[[i]]$CC.1)] = 
+#    data_kmers_list[[i]]$CC_1[which(data_kmers_list[[i]]$SireLine_NewCC_ID == data_kmers_list[[i]]$CC.1)]
+#  data_kmers_list[[i]]$CC_1 = data_kmers_list[[i]]$mat_count
+#  data_kmers_list[[i]]$CC_2 = data_kmers_list[[i]]$pat_count
+#  data_kmers_list[[i]]$mat_count = data_kmers_list[[i]]$pat_count = NULL
+#  data_kmers_list[[i]]$CC_lab = paste(data_kmers_list[[i]]$DamLine_NewCC_ID,data_kmers_list[[i]]$SireLine_NewCC_ID, sep="/")
+#  data_kmers_list[[i]] = data_kmers_list[[i]] %>% select(one_of("seq.Gene","seq.Chromosome","seq.rsId","seq.Position",
+#                            "CC_1","CC_2","sum","CC1_hap","CC2_hap",
+#                            "Pup.ID","CCs","logSum","Breeding.Batch","Behavior.Batch","RIX","Reciprocal","Diet",
+#                            "DamLine_NewCC_ID","Dam.ID","SireLine_NewCC_ID", "Sire.ID",
+#                            "CC_lab","RRIX","pup_gene","DietRIX","CC.1","CC.2","l_count","r_count"))
+#}
 
 ratios_lst = list()
 for(c in 1:length(data_kmers_list)){
@@ -259,9 +272,9 @@ for(c in 1:length(data_kmers_list)){
                                      stan=F, stanMod = "ase_mu_g_simple.stan")
 }
 
-#saveRDS(data_kmers_list, file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_26jan2021.rds"))
+#saveRDS(data_kmers_list, file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_29jan2021.rds"))
 
-ratios_lst = readRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/ratios_lst_out_26jan2021.rds"))
+ratios_lst = readRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/ratios_lst_out_29jan2021.rds"))
 
 
 total_counts = lapply(data_kmers_list, function(x) 
@@ -346,7 +359,7 @@ pmat$padj = as.numeric(p.adjust(pmat$fisher_p, method = "BH"))
 
 pmat$ie    = ifelse(rownames(pmat) %in% ie_genes$mgi_symbol, T, F)
 pmat$gregg = ifelse(rownames(pmat) %in% gregg_genes$Gene.Name, T, F)
-pmat$de    = ifelse(rownames(pmat) %in% de_genes$V1, T, F)
+pmat$de    = ifelse(rownames(pmat) %in% de_genes$gene, T, F)
 pmat %>% arrange(fisher_p)
 
 pmat %>% filter(ie, padj_fdr<0.05) %>% arrange(desc(fisher_stat))
@@ -360,14 +373,16 @@ genes = rownames(pmat %>% filter(padj_fdr < 1/length(unique(total_counts$seq.Gen
 genes = rownames(pmat %>% filter(padj_fdr < 1e-4, !ie, de) %>% arrange(desc(fisher_stat)))
 genes = rownames(pmat %>% filter(!ie, gregg) %>% arrange(desc(fisher_stat)))
 genes = rownames(pmat %>% filter(!ie, padj_fdr<0.05, de) %>% arrange(desc(fisher_stat)))
+genes = rownames(pmat %>% filter(ie, padj_fdr<0.05) %>% arrange(desc(fisher_stat)))
 
 hi_rat = total_counts %>% ungroup() %>%
   group_by(seq.Gene) %>%
   mutate(ratio_m = sum_1 / sum_tot) %>%
   summarize(mean_rat = mean(ratio_m), n=n(), abs_rat = abs(mean_rat - 0.5)) %>%
   arrange(desc(abs_rat)) %>%
-  filter(abs_rat > 0.1, mean_rat < 1, n > 4, !seq.Gene %in% ie_genes$mgi_symbol)
+  filter(abs_rat > 0.05, mean_rat < 1, n > 4)
 genes = hi_rat$seq.Gene[which(hi_rat$seq.Gene %in% genes)]
+genes = genes[which(genes %in% hi_rat$seq.Gene)]
 
 geneUse = "Eef2"
 geneUse = "Inpp5f"
@@ -381,25 +396,32 @@ p_list_non_ie = list()
 for(g in genes){
   geneUse = g
   plot_gene = total_counts %>% filter(seq.Gene == geneUse) %>%
+    left_join(lab[,-which(colnames(lab) %in% c("RRIX", "Reciprocal", "Diet"))], by="Pup.ID") %>%
     mutate(ratio = sum_1 / sum_tot,
            PO = gsub("[0-9]", "", Reciprocal))
   jitter <- position_jitter(width = 0.1, height = 0)
-  p_list_non_ie[[g]] = ggplot(plot_gene, aes(x=PO)) +                        
-    geom_point(aes(y=sum_1), position=jitter, col="red") + 
-    geom_point(aes(y=sum_2), position=jitter, col="blue") + 
+  colors <- c("Maternal" = "red", "Paternal" = "blue")
+  p_list[[g]] = ggplot(plot_gene, aes(x=DamLine_NewCC_ID)) +                        
+    geom_point(aes(y=sum_1,col="Maternal"), position=jitter) + 
+    geom_point(aes(y=sum_2,col="Paternal"), position=jitter) + 
     #geom_point(aes(y = ratio)) +
-    facet_grid(~ RRIX) + 
-    labs(title = geneUse,
-         y = "Counts", x="POE direction") +
+    facet_grid(~ CCs, scales="free_x") + 
+    labs(title = geneUse, color = "Expression",
+         y = "Counts", x="Maternal strain") +
+    scale_color_manual(values = colors) + 
     theme_classic()
 }
 
-pdf(file.path(dir,'trec/de_IE_gene_plots.pdf'))
-lapply(p_list, print)
+pdf(file.path(dir,'trec/ase_notIE_gene_plots.pdf'))
+p_list_non_ie
 dev.off()
 
-pdf(file.path(dir,'trec/de_nonIE_DE_gene_plots.pdf'))
-lapply(p_list_non_ie, print)
+pdf(file.path(dir,'trec/ase_DE_gene_plots.pdf'))
+p_list
+dev.off()
+
+pdf(file.path(dir,'trec/ase_IE_gene_plots.pdf'))
+p_list
 dev.off()
 
 #Fbn1, Lrrc48, Ndnf
