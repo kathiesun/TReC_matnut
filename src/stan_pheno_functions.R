@@ -190,7 +190,9 @@ stan_ase <- function(df, encoded=NULL,
   nGP = length(unique(df$INDG))
   nP <- length(unique(df$PUP.ID))
   nG <- length(unique(df$SEQ.GENE))
+  if("RECIPROCAL" %in% colnames(df)) df$DIR <- gsub("[0-9]", "",df$RECIPROCAL)
   df$PO <- ifelse(df$DIR == "a", 0.5, -0.5)
+  
   
   mu_0 <- mean(y_gk/N_gk)
   tau_0 <- 1/var(y_gk/N_gk)
@@ -211,8 +213,10 @@ stan_ase <- function(df, encoded=NULL,
   indDR   = indDR[,-ncol(indDR)]
 
   map_gp_p = model.matrix(~ 0 + PUP.ID, unique(df %>% select(SEQ.GENE, PUP.ID, PUP_GENE)))
-  map_g_gp = t(model.matrix(~ 0 + SEQ.GENE, unique(df %>% select(SEQ.GENE, PUP.ID, PUP_GENE))))
+  map_gp_g = model.matrix(~ 0 + SEQ.GENE, unique(df %>% select(SEQ.GENE, PUP.ID, PUP_GENE)))
+  map_g_gp = t(map_gp_g)
   map_g_p = map_g_gp %*% map_gp_p
+  ind_SPO = (t(indGP)%*%as.matrix(df$PO,ncol=1))
   
   standat <-  list(N           = length(y_gk),
                    y_gk        = y_gk, 
@@ -224,11 +228,11 @@ stan_ase <- function(df, encoded=NULL,
                    nGP         = nGP,
                    indGP       = indGP,
                    map_gp_p    = map_gp_p,
-                   map_g_gp    = map_g_gp,
+                   map_gp_g    = map_gp_g,
                    map_g_p     = map_g_p,
-                   weight_g    = 1/rowSums(map_g_gp), 
-                   weight_g_p  = 1/rowSums(map_g_p), 
-                   SPO         = as.vector(df$PO))
+                   #weight_g    = 1/rowSums(map_g_gp), 
+                   #weight_g_p  = 1/rowSums(map_g_p), 
+                   indSPO      = ind_SPO)
     
   warmup=round((floor((iter*0.25)/(iter/10))*(iter/10)))
   thin=max(iter/1000,1)
@@ -242,7 +246,7 @@ stan_ase <- function(df, encoded=NULL,
   try(resStan <- stan(model_code = stan_code, data = standat,
                       chains = nchains, iter = iter, warmup = warmup, thin = thin))
 
-  return(resStan)
+    return(resStan)
 }
 
 

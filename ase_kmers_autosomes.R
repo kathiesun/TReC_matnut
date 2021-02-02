@@ -220,9 +220,9 @@ files = list.files(file.path(dir, "trec/data_kmers_from_process_and_plot/"), pat
 data_kmers_list = readRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_29jan2021.rds"))
 
 
-lab = unique(do.call("rbind", lapply(data_kmers_list, function(x) 
-  x[,c("Pup.ID","CCs","RIX","Reciprocal","DamLine_NewCC_ID","SireLine_NewCC_ID","CC_lab","RRIX","CC.1","CC.2" )]
-  )))
+#lab = unique(do.call("rbind", lapply(data_kmers_list, function(x) 
+#  x[,c("Pup.ID","CCs","RIX","Reciprocal","DamLine_NewCC_ID","SireLine_NewCC_ID","CC_lab","RRIX","CC.1","CC.2" )]
+#  )))
 
 
 
@@ -269,7 +269,7 @@ for(c in 1:length(data_kmers_list)){
                                      save_dir=NULL, 
                                      STZ=T, use_gene=F,
                                      no_theta=F, alpha=NULL,
-                                     stan=F, stanMod = "ase_mu_g_simple.stan")
+                                     stan=T, stanMod = "ase_mu_pg.stan")#ase_mu_g_simple.stan
 }
 
 #saveRDS(data_kmers_list, file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_29jan2021.rds"))

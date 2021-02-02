@@ -128,3 +128,7 @@ saveRDS(which_homs_list, paste0(dir,"/de_results/het_regions/which_homs_list_",c
 saveRDS(pmat_list, paste0(dir,"/de_results/het_regions/pmat_list_",c,".rds"))
 
 
+
+results = list.files(file.path(dir,"/de_results/het_regions/"), full.names = T)
+which_homs_list = lapply(results[grep("which_homs_list", results)], readRDS)
+pmat_list = lapply(results[grep("pmat_list", results)], readRDS)
