@@ -21,8 +21,9 @@ source("./matnut/prediction_functions.R")
 source("./matnut/summary_functions.R")
 ###### Read in data
 dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
-matnut <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
+matnut_lst <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
 matnut_jags = readRDS(file.path(dir, "phenotype_analysis/out/complete_phen_model.rds"))
+matched_results = readRDS(file.path(dir, "phenotype_analysis/out/jags_stan_phen_10k_20oct2020.rds"))
 matnut_stan = readRDS(file.path(dir, "phenotype_analysis/out/stan20PhenOut_15dec2020.rds"))
 
 ####################
@@ -61,7 +62,7 @@ for(phen in c(1,2,4,13,18)) {      # 1:length(matnut$ptypes)
 #  c(sapply(1:9, function(j) 
 #   mean(fit_stan[[1]]@sim$samples[[1]][[paste0("p[",j,",",i,"]")]]))) ))
 
-summcmc <- lapply(stanlist, function(x) if(!is.na(nrow(x))) summary(As.mcmc.list(x)))#matnut_stan
+summcmc <- lapply(matnut_stan, function(x) if(!is.na(nrow(x))) summary(As.mcmc.list(x)))#matnut_stan
 
 sum_stan = sapply(1:length(summcmc),function(i){
   tmp = NULL
@@ -86,7 +87,7 @@ sum_stan = sapply(1:length(summcmc),function(i){
 }, simplify=F)
 names(sum_stan) = names(summcmc)
 geneUse = "Dynlt1f" #genes[63]
-plot_tmp = sum_stan[[geneUse]]
+plot_tmp = sum_stan[[1]]
 plot_tmp = plot_tmp %>% filter(Variable == "PORIX")
 
 stan_plot <- plot.inter.ci(med=plot_tmp$X50., mu=plot_tmp$Mean, 
@@ -600,17 +601,17 @@ jagsLmer_compare <- list()
 rixRix_table <- list()
 summary_table <- list()
 
-psychPhen <- testPhen
+psychPhen <- matnut_jags
 
 for(i in 1:length(ptypes)){
   pheno <- ptypes[i]
   
   ####
-  tempTable <- jags.getDecodedSummary(psychPhen[[pheno]]$mcmcObject, encoded, narrow=0.5, wide=0.95)
+  tempTable <- jags.getDecodedSummary(psychPhen$mcmcObject[[pheno]], encoded, narrow=0.5, wide=0.95)
   tempTable$Level <- factor(tempTable$Level, levels=tempTable$Level)
-  null_p <- data.frame(Level = names(psychPhen[[pheno]]$null.test$pval), 
-                       pval = psychPhen[[pheno]]$null.test$pval, 
-                       signif = psychPhen[[pheno]]$null.test$signif)
+  null_p <- data.frame(Level = rownames(psychPhen$null.test[[pheno]]), 
+                       pval = psychPhen$null.test[[pheno]]$pval, 
+                       signif = psychPhen$null.test[[pheno]]$signif)
   null_p$Level <- factor(null_p$Level, levels=tempTable$Level)
   null_p <- null_p[order(null_p$Level),]
   mergeTable <- merge(tempTable, null_p, by="Level")
@@ -628,7 +629,7 @@ for(i in 1:length(ptypes)){
 }
 
 
-write.csv(do.call(rbind, summary_table), file.path("./","matnut_outputs/",'allPheno_summarytable.csv'), row.names = F)
+write.csv(do.call(rbind, summary_table), file.path(dir,"phenotype_analysis/allPheno_summarytable.csv"), row.names = F)
 
 
 
@@ -696,10 +697,19 @@ flagPlots <- function(results, df, ptypes=NULL, encoded=NULL, write=F, byVar = c
 ### Mega-plot ###
 
 keep <- c("Diet", "DietRIX","PODietRIX","PORIX", "RIX")
-myMCMC <- testPhen$WeightPND60$mcmcObject[, which(colnames(testPhen$WeightPND60$mcmcObject) %in% 
+mcmc_cols = colnames(psychPhen$mcmcObject[[pheno]])
+for(i in 1:nrow(dietlabs)) {
+  x=dietlabs[i,]
+  cols_ind = grep(x["short"], mcmc_cols)
+  which_cols = mcmc_cols[cols_ind]
+  mcmc_cols[cols_ind] = gsub(x["short"],x["long"], which_cols)
+}
+colnames(psychPhen$mcmcObject[[pheno]]) = mcmc_cols
+myMCMC <- psychPhen$mcmcObject[[pheno]][, which(colnames(psychPhen$mcmcObject[[pheno]]) %in% 
                                                     encoded$Level[which(encoded$Variable %in% keep)])]
-ribbon_plot(myMCMC, ptypes, encoded)
-
+ribbon_plot(myMCMC, pheno, encoded)
+generateRibbonPlots(results=matnut_jags, df=matnut, ptypes=ptypes, encoded=encoded, print=F, output=".")
+  
 
 #ptypes <- names(psychPhenResults)
 temp_rib<- list()
@@ -779,7 +789,7 @@ jagsLmer_compare <- list()
 rixRix_table <- list()
 summary_table <- list()
 
-psychPhen <- testPhen
+psychPhen <- matnut_jags
 
 for(i in 1:length(ptypes)){
   pheno <- ptypes[i]
@@ -866,15 +876,16 @@ for(i in 1:length(ptypes)){
 ################
 # Prepare data #
 ################
-matnut <- read.csv("../data/AllPhenotypes_Matnut5.csv")
+matnut <- read.csv(file.path(dir, "matnut_main/AllPhenotypes_Matnut_use.csv"))
 
 matnut[grep("a", matnut$Reciprocal),"PO"] <- 0.5
 matnut[grep("b", matnut$Reciprocal),"PO"] <- -0.5
 matnut[which(matnut$PO == 0.5), "pof"] <- "+"
 matnut[which(matnut$PO == -0.5), "pof"] <- "-"
-dietlabs <- c("STD", "ME", "PD", "VDD")
+dietlabs <- data.frame(short=c("STD", "ME", "PD", "VDD"),
+                       long =  c("Standard","LowProtein","MethylEnriched","VitaminDDeficient"))
 matnut$RIX <- factor(matnut$RIX, levels=c(1:4,6:10))
-matnut$Diet <- factor(matnut$Diet, levels=dietlabs)
+matnut$Diet <- factor(matnut$Diet, levels=dietlabs$long)
 
 
 ### covariates ###

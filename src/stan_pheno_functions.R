@@ -217,6 +217,8 @@ stan_ase <- function(df, encoded=NULL,
   map_g_gp = t(map_gp_g)
   map_g_p = map_g_gp %*% map_gp_p
   ind_SPO = (t(indGP)%*%as.matrix(df$PO,ncol=1))
+  ind_SPO = unique(df %>% select(PUP_GENE, PO))$PO
+  ind_SPO = unique(df %>% select(PUP.ID, PO))$PO
   
   standat <-  list(N           = length(y_gk),
                    y_gk        = y_gk, 
@@ -230,14 +232,17 @@ stan_ase <- function(df, encoded=NULL,
                    map_gp_p    = map_gp_p,
                    map_gp_g    = map_gp_g,
                    map_g_p     = map_g_p,
-                   #weight_g    = 1/rowSums(map_g_gp), 
-                   #weight_g_p  = 1/rowSums(map_g_p), 
+                   map_g_gp    = map_g_gp, 
+                   weight_g    = 1/rowSums(map_g_gp), 
+                   weight_g_p  = 1/rowSums(map_g_p), 
                    indSPO      = ind_SPO)
     
   warmup=round((floor((iter*0.25)/(iter/10))*(iter/10)))
   thin=max(iter/1000,1)
   
   fileName <- stanMod
+  #fileName <- "ase_mu_g_regr.stan"
+  
 
   stan_code <- readChar(fileName, file.info(fileName)$size)
   #cat(stan_code)

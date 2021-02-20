@@ -261,6 +261,92 @@ data_kmers_list = readRDS(file.path(dir, "trec/data_kmers_from_process_and_plot/
 #                            "CC_lab","RRIX","pup_gene","DietRIX","CC.1","CC.2","l_count","r_count"))
 #}
 
+#######################################################
+rixes = levels(pupInfo$RIX)
+r=1
+
+test_dat = do.call("rbind", lapply(data_kmers_list, function(x) x %>% filter(RRIX == rixes[r])))
+test_dat = test_dat %>% group_by(Pup.ID, seq.Gene) %>% 
+  summarize(mat_tot = sum(CC_1), pat_tot = sum(CC_2))
+genes = unique(test_dat$seq.Gene)
+pups = unique(test_dat$Pup.ID)
+mat_tots = test_dat %>% select(c(Pup.ID, seq.Gene, mat_tot)) %>%
+  spread(seq.Gene, mat_tot)
+mat_tots = t(mat_tots)
+colnames(mat_tots) = paste0("mat_",mat_tots[1,])
+pat_tots = test_dat %>% select(c(Pup.ID, seq.Gene, pat_tot)) %>%
+  spread(seq.Gene, pat_tot)
+pat_tots = t(pat_tots)
+colnames(pat_tots) = paste0("pat_",pat_tots[1,])
+pat_tots = pat_tots[-1,]
+mat_tots = mat_tots[-1,]
+ase_sums = mat_tots + pat_tots
+
+ase_tots = cbind(mat_tots,pat_tots)
+ase_tots_comp = ase_tots[complete.cases(ase_tots),]
+ase_sums_comp = ase_sums[complete.cases(ase_tots),]
+
+colData = pupInfo %>% filter(RIX == rixes[r], Pup.ID %in% pups) %>%
+  mutate(ID = paste0("Pup.ID_",Pup.ID), 
+         RIX = factor(RIX, levels=c(1:4,6:10)),
+         Diet = factor(Diet, levels=c("Standard","LowProtein","MethylEnriched","VitaminDDeficient")),
+         dir = factor(dir)) 
+rownames(colData) = colData$ID
+
+colnames(ase_sums_comp) = gsub("mat_","Pup.ID_", colnames(ase_sums_comp))
+reorder_cols = match(colData$ID, colnames(ase_sums_comp))[which(!is.na(match(colData$ID, colnames(ase_sums_comp))))]
+ase_sums_comp = ase_sums_comp[,reorder_cols]
+
+all(rownames(colData) == colnames(ase_sums_comp))
+
+dds <- dds <- DESeqDataSetFromMatrix(countData = ase_sums_comp,
+                                     colData = colData,
+                                     design = ~ dir)
+dds <- DESeq(dds)
+res <- results(dds, name="dir_b_vs_a")
+
+resLFC <- lfcShrink(dds, coef="dir_b_vs_a", type="apeglm")
+resLFC
+
+n <- length(pups)
+f <- factor(rep(1:2,each=n))
+
+theta.hat <- 1000 # rough initial estimate of dispersion
+x <- model.matrix(~f)
+#x = rep(1, n)
+niter=5
+for (i in 1:niter) {
+  param <- cbind(theta.hat, ase_tots_comp)
+  #param <- cbind(theta.hat, ase_tots_comp[,1:n])
+  
+  fit.mle <- apeglm(Y=ase_tots_comp, x=x, log.lik=NULL, param=param,
+                    no.shrink=TRUE, log.link=FALSE, method="betabinCR")
+  theta.hat <- bbEstDisp(success=ase_tots_comp, size=ase_sums_comp,
+                         x=x, beta=fit.mle$map,
+                         minDisp=.01, maxDisp=5000)
+}
+
+coef <- 2
+xlab <- "mean of total counts"
+plot(rowMeans(ase_sums_comp), fit.mle$map[,coef], log="x", xlab=xlab, ylab="log odds")
+
+
+mle <- cbind(fit.mle$map[,coef], fit.mle$sd[,coef])
+param <- cbind(theta.hat, ase_sums_comp)
+fit2 <- apeglm(Y=ase_tots_comp, x=x, log.lik=NULL, param=param,
+               coef=coef, mle=mle, threshold=0.7,
+               log.link=FALSE, method="betabinCR")
+
+ylim <- c(-1,1.5)
+s.val <- svalue(fit2$thresh) # small-or-false-sign value
+cols <- ifelse(s.val < .01, "red", "black")
+plot(rowMeans(ase_sums_comp), fit2$map[,coef], main="apeglm",
+     log="x", xlab=xlab, ylab="log odds", col=cols, ylim=ylim)
+abline(h=0,col=rgb(1,0,0,.5))
+fit2$map = cbind(fit2$map, abs(fit2$map[,coef]))
+fit2$map = fit2$map[order(fit2$map[,coef+1], decreasing = T),]
+
+
 ratios_lst = list()
 for(c in 1:length(data_kmers_list)){
   ratios_lst[[c]] = run_stan_regress(data_kmers=data_kmers_list[[c]], 
@@ -269,7 +355,7 @@ for(c in 1:length(data_kmers_list)){
                                      save_dir=NULL, 
                                      STZ=T, use_gene=F,
                                      no_theta=F, alpha=NULL,
-                                     stan=T, stanMod = "ase_mu_pg.stan")#ase_mu_g_simple.stan
+                                     stan=F, stanMod = "ase_mu_g_regr.stan")#ase_mu_g_simple.stan
 }
 
 #saveRDS(data_kmers_list, file.path(dir, "trec/data_kmers_from_process_and_plot/data_kmers_list_out_29jan2021.rds"))
@@ -287,6 +373,23 @@ total_counts = do.call("rbind", total_counts)
 total_counts$stringtie_cts = NA
 total_counts$RRIX = gsub("[a-z]","",total_counts$Reciprocal)
 total_counts$PO   = gsub("[0-9]","",total_counts$Reciprocal)
+
+
+
+ase_total_counts = matrix(NA, ncol=length(colData$ID), nrow=nrow(gene_count))
+colnames(ase_total_counts) = colnames(gene_count)
+rownames(ase_total_counts) = rownames(gene_count)
+
+for(p in colnames(ase_total_counts)){
+  tmp = total_counts %>% filter(Pup.ID == gsub("Pup.ID_","",p))
+  matches = match(tmp$seq.Gene,rownames(ase_total_counts))
+  ase_total_counts[matches[!is.na(matches)],which(colnames(ase_total_counts) == p)] = tmp$sum_tot[!is.na(matches)]
+}
+
+ase_total_counts = read.csv(file.path(dir,"trec/ase_total_count_matrix.csv"))
+rownames(ase_total_counts) = ase_total_counts$X
+ase_total_counts$X = NULL
+
 for(i in grep("Pup.ID", colnames(gene_count))){
   coln = grep("Pup.ID", colnames(gene_count))[i]
   pup = unlist(strsplit(colnames(gene_count)[coln], "_"))[c(F,T)]
@@ -320,20 +423,23 @@ counts_per_pup = lapply(unique(total_counts$Pup.ID), function(x)
 ##############  fisher  ##################
 
 
-
-binom_test_pvals = lapply(ratios_lst, function(x)
-  do.call("rbind", sapply(1:length(x), function(y) {
+binom_test_pvals = lapply(ratios_lst, function(x){   
+  adj = do.call("rbind", sapply(1:length(x), function(y) {
     tmp = data.frame(do.call("rbind", lapply(x[[y]]$freq, function(z) 
       c(z$statistic, z$parameter, z$p.value, as.vector(z$conf.int), z$estimate))))
     colnames(tmp) = c("n.success", "n.trial", "p.value", "lower", "upper", "est")
     tmp$Gene.Name = rownames(tmp)
     tmp$RIX = names(x)[[y]]
     tmp
-  }, simplify=F))
-)
+  }, simplify=F)) 
+  adj$padj = as.numeric(p.adjust(adj$p.value, method = "BH"))
+  adj
+})
 
 binom_test_pvals = do.call("rbind", binom_test_pvals)
 binom_test_pvals$offset = abs(binom_test_pvals$est - 0.5)
+
+binom_test_pvals_sig = binom_test_pvals %>% filter(padj < 0.05)
 
 pval_list = lapply(unique(binom_test_pvals$Gene.Name), function(x) binom_test_pvals %>% filter(Gene.Name == x))
 
@@ -360,9 +466,11 @@ pmat$padj = as.numeric(p.adjust(pmat$fisher_p, method = "BH"))
 pmat$ie    = ifelse(rownames(pmat) %in% ie_genes$mgi_symbol, T, F)
 pmat$gregg = ifelse(rownames(pmat) %in% gregg_genes$Gene.Name, T, F)
 pmat$de    = ifelse(rownames(pmat) %in% de_genes$gene, T, F)
+pmat$de    = ifelse(rownames(pmat) %in% genes, T, F)
+
 pmat %>% arrange(fisher_p)
 
-pmat %>% filter(ie, padj_fdr<0.05) %>% arrange(desc(fisher_stat))
+dim(pmat %>% filter(ie, padj_qval<0.05) %>% arrange(desc(fisher_stat)))
 pmat %>% filter(!ie, padj_fdr<0.05, de) %>% arrange(desc(fisher_stat))
 
 ## Gnas ### Wars, Meg3 (not anymore)
@@ -372,15 +480,17 @@ pmat %>% filter(!ie, padj_fdr<0.05, de) %>% arrange(desc(fisher_stat))
 genes = rownames(pmat %>% filter(padj_fdr < 1/length(unique(total_counts$seq.Gene)), !ie, n > 2) %>% arrange(padj_fdr))
 genes = rownames(pmat %>% filter(padj_fdr < 1e-4, !ie, de) %>% arrange(desc(fisher_stat)))
 genes = rownames(pmat %>% filter(!ie, gregg) %>% arrange(desc(fisher_stat)))
-genes = rownames(pmat %>% filter(!ie, padj_fdr<0.05, de) %>% arrange(desc(fisher_stat)))
-genes = rownames(pmat %>% filter(ie, padj_fdr<0.05) %>% arrange(desc(fisher_stat)))
+genes = rownames(pmat %>% filter(!ie, padj_qval<0.05) %>% arrange(desc(fisher_stat)))
+genes = rownames(pmat %>% filter(padj_qval<0.05) %>% arrange(desc(fisher_stat)))
+genes = rownames(pmat %>% filter(de) %>% arrange(padj_qval))
 
 hi_rat = total_counts %>% ungroup() %>%
   group_by(seq.Gene) %>%
   mutate(ratio_m = sum_1 / sum_tot) %>%
-  summarize(mean_rat = mean(ratio_m), n=n(), abs_rat = abs(mean_rat - 0.5)) %>%
+  summarize(mean_rat = mean(ratio_m), abs_rat = abs(mean_rat - 0.5),
+            n=n(), mean_counts = mean(sum_tot), max_count = max(sum_tot)) %>%
   arrange(desc(abs_rat)) %>%
-  filter(abs_rat > 0.05, mean_rat < 1, n > 4)
+  filter(abs_rat > 0.10, mean_rat < 1, n > 2, max_count > 50)
 genes = hi_rat$seq.Gene[which(hi_rat$seq.Gene %in% genes)]
 genes = genes[which(genes %in% hi_rat$seq.Gene)]
 
@@ -391,7 +501,6 @@ geneUse = "Gatad1"
 geneUse = "Inpp5f"
 
 p_list = list()
-p_list_non_ie = list()
 
 for(g in genes){
   geneUse = g
@@ -399,18 +508,27 @@ for(g in genes){
     left_join(lab[,-which(colnames(lab) %in% c("RRIX", "Reciprocal", "Diet"))], by="Pup.ID") %>%
     mutate(ratio = sum_1 / sum_tot,
            PO = gsub("[0-9]", "", Reciprocal))
+  plot_gene_long = gather(plot_gene, data_type, value, sum_1:sum_tot, factor_key=TRUE)
   jitter <- position_jitter(width = 0.1, height = 0)
-  colors <- c("Maternal" = "red", "Paternal" = "blue")
-  p_list[[g]] = ggplot(plot_gene, aes(x=DamLine_NewCC_ID)) +                        
-    geom_point(aes(y=sum_1,col="Maternal"), position=jitter) + 
-    geom_point(aes(y=sum_2,col="Paternal"), position=jitter) + 
-    #geom_point(aes(y = ratio)) +
+  jitter2 <- position_jitter(width = 0.2, height = 0)
+  
+  colors <- c("Maternal" = "red", "Paternal" = "blue", "Total"="purple")
+  colors <- c("firebrick2","royalblue","purple")
+  
+  p_list[[g]] = ggplot(data=plot_gene_long, aes(x=DamLine_NewCC_ID)) +   
+    geom_boxplot(data=plot_gene_long %>% filter(data_type != "sum_tot"), 
+                 aes(y=value, fill=data_type)) + 
+    geom_point(data=plot_gene_long %>% filter(data_type == "sum_tot"), 
+               aes(y=value, col=data_type), size = 3, alpha = 0.3, position=jitter) + 
     facet_grid(~ CCs, scales="free_x") + 
-    labs(title = geneUse, color = "Expression",
-         y = "Counts", x="Maternal strain") +
-    scale_color_manual(values = colors) + 
+    scale_fill_manual(values=colors, name = "Allele-specific",
+                      labels=c("Maternal","Paternal")) + 
+    scale_color_manual(name="Total \nexpression", labels = "", values="purple") +
+    labs(title = geneUse, y = "Counts", x="Maternal strain") +
     theme_classic()
 }
+
+
 
 pdf(file.path(dir,'trec/ase_notIE_gene_plots.pdf'))
 p_list_non_ie
@@ -425,6 +543,16 @@ p_list
 dev.off()
 
 #Fbn1, Lrrc48, Ndnf
+#p_list[[g]] = ggplot(plot_gene, aes(x=DamLine_NewCC_ID)) +   
+#  geom_point(aes(y=sum_tot,col="Total"), size = 3, alpha = 0.3, position=jitter2) + 
+#  geom_point(aes(y=sum_1,col="Maternal"), position=jitter) + 
+#  geom_point(aes(y=sum_2,col="Paternal"), position=jitter) + 
+#geom_point(aes(y = ratio)) +
+#  facet_grid(~ CCs, scales="free_x") + 
+#  labs(title = geneUse, color = "Expression",
+#       y = "Counts", x="Maternal strain") +
+#  scale_color_manual(values = colors) + 
+#  theme_classic()
 
 
 fdr = fdrtool(x = pmat$fisher_p, statistic = "pvalue")

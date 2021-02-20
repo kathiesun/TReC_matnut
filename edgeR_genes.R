@@ -4,6 +4,7 @@ library(rstan)
 library(edgeR)
 library(DESeq2)
 library(sva)
+library(fdrtool)
 
 setwd("C:/Users/Kathie/TReC_matnut/src")
 
@@ -90,15 +91,23 @@ colData = matnut[match(colnames(gene_count),matnut$ID),c("Breeding.Batch","Behav
 
 ##################  DESeq2  ##########################
 #colData = colData %>% arrange(RIX, Diet, PO)
+ase_total_counts = read.csv(file.path(dir,"trec/ase_total_count_matrix.csv"))
+rownames(ase_total_counts) = ase_total_counts$X
+ase_total_counts$X = NULL
 
-dds_list = het_genes = list()
+
+
+dds_list = res_list = het_genes = list()
 for(r in levels(matnut$RIX)){
   colData_tmp = colData %>% filter(RIX == r)
+  colData_tmp$Behavior.Batch = factor(colData_tmp$Behavior.Batch)
+  colData_tmp$Breeding.Batch = factor(colData_tmp$Breeding.Batch)
+  
   colData_tmp$Diet = factor(colData_tmp$Diet, 
                             levels=levels(colData$Diet)[which(levels(colData$Diet) %in% colData_tmp$Diet)])
   colData_tmp$DietRIX = factor(colData_tmp$DietRIX, 
                                levels=levels(colData$DietRIX)[which(levels(colData$DietRIX) %in% colData_tmp$DietRIX)])
-  poss_diet_PO = expand.grid(paste0(levels(colData_tmp$Diet),r), colData_tmp$PO)
+  poss_diet_PO = expand.grid(paste0(gsub(" ",".", levels(colData_tmp$Diet)),r), gsub(" ","",colData_tmp$PO))
   poss_diet_PO = unique(apply(poss_diet_PO, 1, function(x) paste(x, collapse="_")))
   colData_tmp$DietRIXPOq = factor(colData_tmp$DietRIXPOq, levels=poss_diet_PO)
   
@@ -106,10 +115,13 @@ for(r in levels(matnut$RIX)){
   #gene_count_red_tmp = gene_count_red %>% select(one_of(colData_tmp$ID))
   #gene_count_tmp = gene_count_red_tmp
   
-  
+  #gene_count_tmp = ase_total_counts %>% select(one_of(colData_tmp$ID))
   Diet = colData_tmp$Diet
   PO = colData_tmp$PO
   DietRIX = colData_tmp$DietRIX
+  #Behavior.Batch = colData_tmp$Behavior.Batch
+  #Breeding.Batch = colData_tmp$Breeding.Batch
+  
   contrasts(Diet) = contr.sum(length(unique(colData_tmp$Diet)))
   contrasts(DietRIX) = contr.sum(length(unique(colData_tmp$DietRIX)))
   mm = model.matrix(~ 0 + Diet + PO)    
@@ -120,7 +132,7 @@ for(r in levels(matnut$RIX)){
   
   rownames(colData_tmp) = colData_tmp$ID
   cts = gene_count_tmp[complete.cases(gene_count_tmp),match(colData_tmp$ID, colnames(gene_count_tmp))]
-  het_genes[[r]] = rownames(gene_count_red_tmp)[complete.cases(gene_count_red_tmp)]
+  het_genes[[r]] = cts #rownames(gene_count_red_tmp)[complete.cases(gene_count_red_tmp)]
   all(rownames(colData_tmp) == colnames(cts))
   dds <- DESeqDataSetFromMatrix(countData = cts, 
                                 colData = colData_tmp,
@@ -140,14 +152,43 @@ for(r in levels(matnut$RIX)){
   dat = dat[rowMeans(dat) > 1,]
   mod  <- model.matrix(as.formula(paste("~ 0 +", base)), colData(dds))
   mod0 <- model.matrix(~   1                           , colData(dds))
-  svseq <- svaseq(dat, mod, mod0, n.sv = 1)  
+  n.sv = num.sv(dat, mod, method="be") + 2
+  #adj_dat = mouthwash(Y=t(dat), X=mod, k=n.sv)
+  #resAsh <- lfcShrink(dds, coef=2, type="ashr")
+  svseq <- svaseq(dat, mod, mod0, n.sv = n.sv)  #
+  print(paste("RIX",r,  n.sv, "SVs"))
   ddssva = dds
-  ddssva$SV1 <- svseq$sv[,1]
+  for(i in 1:n.sv){
+    colData(ddssva)[,paste0("SV",i)] <- svseq$sv[,i]
+    if(i == 1){
+      sv_base = paste("~ 0 + SV1 +")
+    } else {
+      sv_base = paste0(sv_base, paste0("SV",i)," +")
+    }
+                              
+  }
+ 
   
-  design(ddssva) <- as.formula(paste("~ 0 + SV1 +", base))
+  design(ddssva) <- as.formula(paste(sv_base, base))
   dds = ddssva
   
-  dds_list[[r]] <- DESeq(dds)
+  #tmp_dds <- DESeq(dds)
+  #tmp_res = results(tmp_dds)
+  #tmp_p = tmp_res$pvalue[which(tmp_res$pvalue > quantile(tmp_res$pvalue, 0.25) & 
+  #                             tmp_res$pvalue < quantile(tmp_res$pvalue, 0.75))]
+  #tri_dist = function(theta, p_vals){
+  #  sum(prod(2-(theta/2)+(theta*p_vals)))
+  #}
+  #op_test = optim(par=0, fn=tri_dist, p_vals=sort(tmp_p), method="Brent", lower=-6, upper=6)
+  
+  #hist(tmp_res$pvalue)
+  
+  dds_list[[r]]
+  #ft = fdrtool(x = tmp_res$pvalue, statistic = "pvalue")
+  #pval.estimate.eta0(ft$pval, method="adaptive")
+  #print(identical(tmp_res$pvalue, ft$pval))
+  #hist(tmp_res$pvalue, main = paste("Raw p-values for RIX",r))
+  #res_list[[r]] = tmp_res
 }
 
 
@@ -155,7 +196,7 @@ for(r in levels(matnut$RIX)){
 #res <- results(dds)
 
 #saveRDS(dds_list, file.path(dir,"de_results/dds_list_allReg_sepRIX_30jan2021.rds"))
-dds_list = readRDS(file.path(dir,"de_results/dds_list_allReg_sepRIX_30jan2021.rds"))
+dds_list_full = readRDS(file.path(dir,"de_results/dds_list_allReg_sepRIX_30jan2021.rds"))
 
 POres_list = lapply(dds_list, function(x) results(x, name="PO"))
 POres_Ordered <- lapply(POres_list, function(x) x[order(x$pvalue),])
@@ -164,11 +205,15 @@ sig_genes_list = lapply(POres_Ordered, function(x) x[which(x$padj < 0.1),])
 #  if(length(grep("Gm|Rik|[.]", x)) > 0) x[-grep("Gm|Rik|[.]", x)])
 deseq_sig = sort(table(unlist(lapply(POres_Ordered, function(x) rownames(x[which(x$padj < 0.1),])))), decreasing = T)
 
-for(i in 1:length(sig_genes_list)){
-  sig_genes_list[[i]] = data.frame(sig_genes_list[[i]])
-  sig_genes_list[[i]]$gene = rownames(sig_genes_list[[i]])
-  sig_genes_list[[i]]$rix = names(sig_genes_list)[i]
-  rownames(sig_genes_list[[i]]) = NULL
+for(i in names(sig_genes_list)){
+  if(nrow(sig_genes_list[[i]]) > 0){
+    sig_genes_list[[i]] = data.frame(sig_genes_list[[i]])
+    sig_genes_list[[i]]$gene = rownames(sig_genes_list[[i]])
+    sig_genes_list[[i]]$rix = i
+    rownames(sig_genes_list[[i]]) = NULL
+  } else {
+    sig_genes_list[[i]] = NULL
+  }
 }
 
 sig_genes_df = do.call("rbind", sig_genes_list)
@@ -242,7 +287,22 @@ for(g in unique(sig_genes_df$gene)){
 }
 
 
+results = list.files(file.path(dir,"/de_results/het_regions/"), full.names = T)
+which_homs_pre = lapply(results[grep("which_homs_list", results)], readRDS)
+pmat_pre = lapply(results[grep("pmat_list", results)], readRDS)
 
+which_homs_list = pmat_list = list()
+for(i in 1:length(which_homs_pre)){
+  if(i == 1) {
+    which_homs_list = which_homs_pre[[i]]
+    pmat_list = pmat_pre[[i]]
+  } else {
+    which_homs_list = c(which_homs_list, which_homs_pre[[i]])
+    pmat_list = c(pmat_list, pmat_pre[[i]])
+    
+  }
+}
+  
 
 pmat_df = do.call("rbind", pmat_list)
 pmat_df$gene = rownames(pmat_df)
@@ -251,21 +311,26 @@ fisher_ps = apply(pmat_df, 1, function(x)
     p_hom = pchisq(as.numeric(x["hom_stat"]), df=(as.numeric(x["hom_n"])*2),lower.tail = F)))
 pmat_df = cbind(pmat_df, t(fisher_ps))
 
-fdr = fdrtool(x = pmat$fisher_p, statistic = "pvalue")
-pmat$padj_qval = as.numeric(fdr$qval)
-pmat$padj_fdr  = as.numeric(fdr$lfdr)
-pmat$padj = as.numeric(p.adjust(pmat$fisher_p, method = "BH"))
+fdr_het = fdrtool(x = pmat_df$p_het, statistic = "pvalue")
+fdr_hom = fdrtool(x = pmat_df$p_hom, statistic = "pvalue")
 
+pmat_df$het_padj_qval = as.numeric(fdr_het$qval)
+pmat_df$het_padj_fdr  = as.numeric(fdr_het$lfdr)
+pmat_df$het_padj = as.numeric(p.adjust(pmat_df$p_het, method = "BH"))
+pmat_df$hom_padj_qval = as.numeric(fdr_hom$qval)
+pmat_df$hom_padj_fdr  = as.numeric(fdr_hom$lfdr)
+pmat_df$hom_padj = as.numeric(p.adjust(pmat_df$p_hom, method = "BH"))
 
-
+pmat_sig = pmat_df %>% arrange(desc(het_stat)) %>% filter(het_padj_fdr < 0.05)
+genes = rownames(pmat_sig)
 genes = unique(unlist(lapply(sig_genes_short, function(x) x[1:min(5,length(x))])))
 genes = unique(unlist(sig_genes_short))  ## 205
 genes = unique(unlist(sig_genes_list))   ## 327
-#write.csv(sig_genes_df, file.path(dir, "trec/priority_deseq_genes_30jan2021.csv"),
+#write.csv(pmat_sig, file.path(dir, "trec/priority_deseq_genes_2feb2021.csv"),
 #          row.names = F, quote = F)
 keep_genes = imp_perc$Gene.Name[which(imp_perc$Gene.Name %in% genes)]
 keep_genes = c("Bcl2l1", "Sh3bgr", "Bag3", "Idh3a", "Adam23", "R3hdm4", "Prkd1", "Grik5")
-
+keep_genes = genes
 geneResDf_list = list()
 
 for(i in 1:length(keep_genes)){
@@ -276,25 +341,80 @@ for(i in 1:length(keep_genes)){
       plotCounts(x, gene=geneUse, intgroup=c("PO","RIX","Diet"), returnData = T)
     }))
   plotCts$Pup.ID = as.numeric(unlist(strsplit(rownames(plotCts),"_"))[c(F,T)])
-  plotCts = plotCts %>% left_join(lab[,-which(colnames(lab) %in% c("RIX", "Reciprocal", "Diet"))], by="Pup.ID")
-  geneResDf_list[[geneUse]]$plot = ggplot(plotCts, aes(x=DamLine_NewCC_ID, y=count, col=Diet)) + 
-    geom_point(position = position_jitter(width = 0.15)) + 
-    theme_classic() + 
+  plotCts = plotCts %>% left_join(lab[,-which(colnames(lab) %in% c("RIX", "Reciprocal", "Diet"))], by="Pup.ID") %>%
+    select(-one_of("CCs")) %>%
+    left_join(which_homs_list[[geneUse]], by="RIX")
+  plotCts = data.frame(plotCts)
+  geneResDf_list[[geneUse]]$plot = ggplot() + 
+    geom_rect(data=subset(plotCts, hom_tot == T), aes(fill = hom_tot),
+              xmin = -Inf, xmax = Inf, 
+              ymin = -Inf, ymax = Inf, alpha=0.01) +
+    scale_fill_grey() + 
+    geom_point(data=plotCts, aes(x=DamLine_NewCC_ID, y=count, col=Diet),
+               position = position_jitter(width = 0.15)) + 
+    theme_bw() + 
     ggtitle(geneUse) + 
     facet_wrap(~CCs, scales="free_x")
-  
-  geneResDf = data.frame(do.call("rbind", lapply(POres_list, function(x) x[which(rownames(x) == geneUse),])))
+  geneResDf_tmp = data.frame(do.call("rbind", lapply(POres_list, function(x) x[which(rownames(x) == geneUse),])))
+  geneResDf = data.frame(do.call("rbind", geneResDf_tmp))
   geneResDf$gene = rownames(geneResDf)[1]
-  geneResDf$rix = names(POres_list)
+  geneResDf$rix = names(geneResDf_tmp)
   rownames(geneResDf) = NULL
   #dfTitle = unlist(lapply(POres_list, function(x) unlist(strsplit(x@elementMetadata$description[2],":",))[c(F,T)]))
   #rownames(geneResDf) = gsub(" ","",dfTitle)
   geneResDf_list[[geneUse]]$df = geneResDf
 }
 
+
+pdf(file.path(dir, "/trec/deseq2_signif_fisher_genes_11feb2021.pdf"))
 for(i in 1:length(geneResDf_list)){
   print(geneResDf_list[[i]]$plot)
 }
+dev.off()
+
+
+rix_hom_genes = lapply(levels(matnut$RIX), function(i) 
+  lapply(which_homs_list, function(x) x$hom_tot[which(x$RIX == i)]))
+names(rix_hom_genes) = levels(matnut$RIX)
+
+hom_p_vals = het_p_vals = hom_stats = het_stats = list()
+for(i in 1:length(POres_list)){   
+  hom_genes = names(which(unlist(rix_hom_genes[[i]])))
+  hom_p_vals[[i]] = POres_list[[i]]$pvalue[which(rownames(POres_list[[i]]) %in% hom_genes)]
+  hom_stats[[i]] = qnorm(hom_p_vals[[i]])
+  het_p_vals[[i]] = POres_list[[i]]$pvalue[which(!rownames(POres_list[[i]]) %in% hom_genes)]
+  het_stats[[i]] = qnorm(het_p_vals[[i]])
+}
+
+pdf(file.path(dir,"p-vals_beAdd2SVs.pdf"), width = 11)
+for(i in 1:length(hom_p_vals)){
+  par(mfrow=c(1,2))
+  hist(hom_p_vals[[i]], freq = FALSE, 
+       main = paste("RIX", names(POres_list)[i], "Histogram of p-values: homs"))
+  #lines(density(hom_p_vals[[i]][!is.na(hom_p_vals[[i]])]), lwd = 2, col = "red")
+  hist(het_p_vals[[i]], freq = FALSE, 
+       main = paste("RIX", names(POres_list)[i], "Histogram of p-values: hets"))
+  #lines(density(het_p_vals[[i]][!is.na(het_p_vals[[i]])]), lwd = 2, col = "red")
+  
+  
+  hist(pmat_df$p_het, freq = T, 
+       main = paste("Histogram Fisher combined p-values: hets; RIX", names(POres_list)[i]))
+  hist(pmat_df$p_hom, freq = T, 
+       main = paste("Histogram Fisher combined p-values: homs; RIX", names(POres_list)[i]))
+  
+  
+  colors=c(het="blue",hom="red")
+  par(mfrow=c(1,1))
+  plot(density(het_stats[[i]]), col = colors[1],
+       main = paste("RIX", names(POres_list)[i], "Density of test statistics"))
+  lines(density(hom_stats[[i]]), col = colors[2])
+  legend(x="bottom", legend=c("Het","Hom"), lwd=2, col=colors)
+  
+  
+}
+dev.off()
+
+
 
 
 #regions_list = readRDS(file.path(dir,"mini/seg_regions_by_genotyping_perRIX_kmerBased_23nov2019.rds"))
