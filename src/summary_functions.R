@@ -6,12 +6,17 @@ source("plot.hpd_ks.R")
 getEncoding <- function(df, terms){
   encoded <- data.frame()
   for(i in 1:length(terms)){
-    var <- paste(terms[i])
-    len <- length(levels(as.factor(df[,var])))
+    var <- which(colnames(df) == paste(terms[i]))
+    if(is.factor(unlist(df[,var]))){
+      temp = unlist(df[,var])
+    } else {
+      temp = as.factor(df[,var])
+    }
+    len <- length(levels(temp))
     
-    tempdf <- data.frame(Level = as.character(levels(as.factor(df[,var]))), 
+    tempdf <- data.frame(Level = as.character(levels(temp)), 
                          Index = 1:len, 
-                         Variable = rep(var,len))
+                         Variable = rep(paste(terms[i]),len))
     encoded <- rbind(encoded,tempdf)
   }
   return(encoded)

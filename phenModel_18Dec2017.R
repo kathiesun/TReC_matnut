@@ -10,18 +10,19 @@ library(gridExtra)
 library(grid)
 #setwd("~/matnut/src")
 setwd("C:/Users/Kathie/matnut/src")
+setwd("C:/Users/Kathie/TReC_matnut/src")
 
-source("./matnut/lmer_functions_rna.R")
-source("./matnut/jags_functions.R")
-source("./matnut/boxcox_functions.R")
+source("lmer_functions_rna.R")
+source("jags_functions.R")
+source("boxcox_functions.R")
 #source("./matnut/matching_functions3.R")
-source("./matnut/matching_functions_lump.R")
+source("../matching_functions_lump.R")
 
-source("./matnut/prediction_functions.R")
-source("./matnut/summary_functions.R")
+source("prediction_functions.R")
+source("summary_functions.R")
 ###### Read in data
 dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
-matnut_lst <- readRDS(file.path(dir,'phenotype_analysis/matnut_data.rds'))
+matnut <- readRDS(file.path(dir,'phenotype_analysis/out/matnut_data_022021.rds'))
 matnut_jags = readRDS(file.path(dir, "phenotype_analysis/out/complete_phen_model.rds"))
 matched_results = readRDS(file.path(dir, "phenotype_analysis/out/jags_stan_phen_10k_20oct2020.rds"))
 matnut_stan = readRDS(file.path(dir, "phenotype_analysis/out/stan20PhenOut_15dec2020.rds"))
@@ -37,25 +38,27 @@ myPhen <- makeSummary(datalist=matnut, phenotype=matnut$ptypes[5:7],
 #n.adapt=20000, n.iter=50000
 
 #saveRDS(myPhen, file.path("./","matnut_outputs/",'allPheno_modelfits.rds'))
-testPhen <- readRDS(file.path(dataSource, 'allPheno_modelfits.rds'))
+myPhen <- readRDS(file.path(dir, 'phenotype_analysis/out/complete_phen_model.rds'))
+matched_results = list()
 
-matched_results <- list()
 ### matching ###
-for(phen in c(1,2,4,13,18)) {      # 1:length(matnut$ptypes)
+for(phen in 1:length(matnut$ptypes)){# {      # c(1,2,4,13,18)
   matnut_use = matnut
   matnut_use$df$DietRIXPOq = paste(matnut_use$df$DietRIX, matnut_use$df$PO,sep="_")
   tab = sort(table((matnut_use$df %>% filter(!is.na(get(matnut$ptypes[phen]))))$DietRIXPOq))
   rem = unique(unlist(strsplit(names(tab)[which(tab < 5)],"_"))[c(T,F)])
   matnut_use$df = matnut_use$df %>% filter(!DietRIX %in% rem)
   matched_results[[matnut$ptypes[phen]]] <- match.multimp(data=matnut_use, ptypes=matnut$ptypes[phen], 
-                                                N=5,chains=1, n.iter=10000, 
+                                                N=5,chains=1, n.iter=100000, 
                                                 tryLam=c(-1, 0, .25, .33, .5, 1, 2, 3), thin=10,
                                                 randvar=NA, fixvar="Diet",  
                                                 matchon=c("Cage","RIX","Diet"), matchoff="PO", idcol="ID",
-                                                fixPO = F, fixClust = F, p="p", beta=T, clust=NULL)
+                                                fixPO = F, fixClust = F, p="p", beta=T, clust=NULL,
+                                                stan=F)
   
   #plot_rix = matnut_use$df[-which(is.na( matnut_use$df$ptypes[i]))]
 }
+
 
 
 #do.call("cbind",lapply(1:3, function(i) 
@@ -122,23 +125,30 @@ names(mcmc_compare_plot_list) = names(matched_results)
 
 p_plot_list = lapply(matched_results, function(x) plot_p(x$fit_stan))
 
-matched_df_ob_list = lapply(matched_results, function(x) {
-  tmp = x$matched_df
-  for(i in 1:length(tmp)){
-    tmp[[i]]$chain = i
-  }
-  do.call("rbind", tmp)
-})
 
 plot_raw_delts_list = sapply(1:length(matched_results), function(i)
-  plot_deltas(matched_df_ob_list[[i]], p_plot_list[[i]]$cluster))
+  plot_deltas(matched_df_ob_list[[i]], ptypes = names(matched_results)[i],
+              clusters = get_clusters(matched_results[[i]]$multimp$fit)$medians,
+              encoded=encoded))
 names(plot_raw_delts_list) = names(matched_results)
+
+
+
+
+
+ptypes_sig = c("WeightPND21","WeightPND60","OFTotalDistance","LDPctLight","LDDarkDistance")
+mu_a_tab_tmp = lapply(ptypes_sig, function(x) summary(matched_results[[x]]$multimp$fit$mu_a_abs))
+names(mu_a_tab_tmp) = ptypes_sig
+mu_a_est = do.call("rbind", lapply(mu_a_tab_tmp,function(x)c(x$statistics, x$quantiles)))
+write.csv(mu_a_est, file.path(dir, "mu_a_est.csv"))
+
 
 
 i=1
 grid.arrange(mcmc_compare_plot_list[[i]]$plot)
 p_plot_list[[i]]$plot
-grid.arrange(plot_raw_delts_list[[i]])
+grid.arrange(plot_raw_delts_list[[1]])
+grid.arrange(plot_raw_delts_list[[4]])
 
 
 compare_muA_stan_jags = function(results_object, phen = NULL){
@@ -218,9 +228,9 @@ compare_muA_stan_jags = function(results_object, phen = NULL){
   sum = rbind(jags_sum, stan_sum)
   return(list(plot=plot_sum, df=sum))
 }     
+testcompare = compare_muA_stan_jags(matched_results$WeightPND21, "WeightPND21")
 
-
-plot_deltas = function(matched_df_ob, clusters){
+plot_deltas = function(matched_df_ob, clusters,encoded,ptypes=NULL){
   n_chains = length(unique(matched_df_ob$chain))
   matched_df_ob = matched_df_ob %>%
     mutate(RIX = factor(RIX, levels=c(1:4,6:10)),
@@ -232,24 +242,33 @@ plot_deltas = function(matched_df_ob, clusters){
   p1 = ggplot(data = matched_df_ob, aes(group=chain_RIX)) + 
     theme_classic() + 
     geom_density(aes(x=y, color = RIX)) +
+    labs(main=ptypes, x="",y="Density") + 
     scale_color_manual(values = hue_pal()(9))
-  
-  p_cols = rep(ifelse(is.na(clusters$clus), "#808080", 
-                      ifelse(clusters$clus == 0, "#26b9ef",  "#8d00b0")) ,each=n_chains)
-  matched_df_ob$clus = clusters$clus[match(matched_df_ob$RIX,clusters$rix)]
+  #Set1
+  p_cols = rep(ifelse(is.na(clusters), "#808080", 
+                      ifelse(clusters == 0, "#26b9ef",  "#8d00b0")) ,each=n_chains)
+  matchInd = match(matched_df_ob$RIX, encoded$Level[which(encoded$Variable == "RIX")])
+  matched_df_ob$clus = ifelse(matched_df_ob$RIX %in% 
+                                encoded$Level[which(encoded$Variable == "RIX")][which(clusters == 1)], 1, 0)
+    #clusters[encoded$Index[which(encoded$Variable == "RIX")][matchInd]]
   matched_df_ob$clus[which(is.na(matched_df_ob$clus))] = 2
   matched_df_ob$clus = factor(matched_df_ob$clus, levels=c(0,1,2))
   
   p2 = ggplot(data = matched_df_ob, aes(group=chain_RIX)) + 
     theme_classic() + 
     geom_density(aes(x=y, color = clus)) +
-    scale_color_manual(values=c(hue_pal()(2),"#808080"),
-                       labels=c("mu_0","mu_a","unclear"))
+    labs(main="", x="Difference in values between PO (centered and scaled)",y="Density") + 
+    scale_color_manual(values=c("gray","black"), name = "Cluster",
+                       labels=c("Null","Alt","unclear"))
   
-  p <- arrangeGrob(p1, p2, name = paste("Raw deltas over",n_chains,"chains"))
+  p <- arrangeGrob(p1, p2, p3, name = paste("Raw deltas over",n_chains,"chains"))
   return(p)
 }
 matched_results$WeightPND21$matched_df[[1]]
+
+
+
+
 
 plot_p = function(stan_list){
   n_chains = length(stan_list)
@@ -320,11 +339,23 @@ saveRDS(matched_results, file.path(dir,"phenotype_analysis/out/jags_stan_phen_10
 #multimp = readRDS(file.path(dir,"phenotype_analysis/out/mult_imp_match_7jul2020.rds"))
 
 
-plot_clust(matched_results$WeightPND21$multimp$fit$`mu_0`, 
-           matched_results$WeightPND21$multimp$fit$`mu_a`)
+plot_clust_single(matched_results[[1]]$multimp$fit$`mu_a_sq`)
+matched_df_ob_list = lapply(matched_results, function(x) {
+  tmp = x$matched_df
+  for(i in 1:length(tmp)){
+    tmp[[i]]$chain = i
+  }
+  do.call("rbind", tmp)
+})
 
-get_clusters(matched_results$WeightPND60$multimp$fit)
-get_clusters(matched_results$OFTotalDistance$multimp$fit)
+lapply(matched_results, function(x) get_clusters(x$multimp$fit))
+get_clusters(matched_results_fixPO$WeightPND21$multimp$fit)
+for(i in 1:length(matched_results)){
+  print(plot_clust_single(matched_results[[i]]$multimp$fit[["mu_a_sq"]]))
+  
+}
+plot_deltas(matched_results_fixPO$WeightPND21$matched_df,
+            get_clusters(matched_results_fixPO$WeightPND21$multimp$fit)$medians)
 
 x=matched_results$WeightPND21
 plots_phen = lapply(matched_results, function(x){  
@@ -333,7 +364,7 @@ plots_phen = lapply(matched_results, function(x){
   #if(length(unique(clusters)) == 1){
   #  clus = plot_clust(x$multimp$fit[["mu_a"]],
   #                    x$multimp$fit[["mu_a_sq"]])
-    clus = plot_clust_single(x$multimp$fit[["mu_a_sq"]])
+    clus = plot_clust_single(x$multimp$fit[["mu_a_abs"]])
   #} else {
   #  clus = plot_clust(x$multimp$fit[["mu_0"]],
   #                    lapply(x$multimp$fit[["mu_a"]], abs))
@@ -349,10 +380,25 @@ plots_phen = lapply(matched_results, function(x){
 
 
 require(gridExtra)
-windows()
-grid.arrange(plots_phen[[2]][[2]][[1]],plots_phen[[2]][[2]][[2]], top="Raw data", ncol = 2, nrow = 1)
+#windows()
+grid.arrange(plots_phen[[2]][[2]][[1]],plots_phen[[2]][[2]][[2]], 
+             top=paste("Distribution of delta", names(plots_phen)[2]),
+             ncol = 2, nrow = 1)
 
-grid.arrange(plots_phen[[1]][[2]][[1]],plots_phen[[1]][[2]][[2]], top="Raw data", ncol = 2, nrow = 1)
+grid.arrange(plots_phen[[1]][[2]][[1]],plots_phen[[1]][[2]][[2]], 
+             top=paste("Distribution of delta", names(plots_phen)[1]),
+             ncol = 2, nrow = 1)
+
+grid.arrange(plots_phen[[3]][[2]][[1]],plots_phen[[3]][[2]][[2]], 
+             top=paste("Distribution of delta", names(plots_phen)[3]),
+             ncol = 2, nrow = 1)
+grid.arrange(plots_phen[[4]][[2]][[1]],plots_phen[[4]][[2]][[2]], 
+             top=paste("Distribution of delta", names(plots_phen)[4]),
+             ncol = 2, nrow = 1)
+grid.arrange(plots_phen[[5]][[2]][[1]],plots_phen[[5]][[2]][[2]], 
+             top=paste("Distribution of delta", names(plots_phen)[5]),
+             ncol = 2, nrow = 1)
+
 grid.arrange(plots[[2]][[2]][[1]],plots[[2]][[2]][[2]], top="Raw data", ncol = 2, nrow = 1)
 
 
@@ -371,7 +417,7 @@ colnames(muClust1) = paste0("it",seq(1:ncol(muClust1)))
 muClust1_long = gather(muClust1, "it","est")
 ggplot(muClust1_long, aes(x=est, col=it)) + geom_density() + xlim(-5,5)
 
-muClust2 = data.frame(do.call("cbind", matched_results[[n]]$multimp$fit$mu_a))
+muClust2 = data.frame(do.call("cbind", matched_results[[n]]$multimp$fit$mu_a_abs))
 colnames(muClust2) = paste0("it",seq(1:ncol(muClust2)))
 muClust2_long = gather(muClust2, "it","est")
 ggplot(muClust2_long, aes(x=est, col=it)) + geom_density()
@@ -475,7 +521,8 @@ plot_clust_single = function(muList1){
   muClust_long1 = rbind(muClust_long1, 
                         data.frame(it = "mean", mean=T,est = rowMeans(muClust1)))
   mcClust = muClust_long1
-  coluse = c("#07575B","#C4DFE6","#4B7447","#A2C523")
+  #coluse = c("#07575B","#C4DFE6","#4B7447","#A2C523")
+  coluse = c("black","gray40","gray60","gray80")
   p = ggplot(mcClust %>% filter(mean), aes(x=est, group=it)) +
     geom_line(stat='density', col=coluse[1], size=1) + 
     geom_vline(xintercept=mean_est1, linetype="dashed", col=coluse[1]) + 
@@ -484,7 +531,8 @@ plot_clust_single = function(muList1){
   p = p + 
     geom_line(stat='density', data=mcClust %>% filter(!mean),
               aes(group=it), col=coluse[2]) + 
-    theme_bw() + 
+    theme_classic() + 
+    labs(y="Density", x=expression(paste("Estimated ",mu[a]," from 5 MCMC iterations"))) + 
     xlim(min, max) + aes(ymin=0)
   return(p)
 }
@@ -603,6 +651,7 @@ summary_table <- list()
 
 psychPhen <- matnut_jags
 
+
 for(i in 1:length(ptypes)){
   pheno <- ptypes[i]
   
@@ -622,14 +671,14 @@ for(i in 1:length(ptypes)){
   summary_table[[pheno]] <- cbind(phenotype=rep(pheno,nrow(shortTable)), 
                                   shortTable[order(shortTable$Variable, shortTable$Level),])
   ####
-  #dietTab <- contrasts.getDecodedSummary(psychPhen$OFTotalDistance, "Diet")
+  #dietTab <- contrasts.getDecodedSummary(psychPhen$diet.test[[pheno]], "PO")
   #dietDiet_table[[pheno]] <- cbind(phenotype=rep(pheno,nrow(dietTab)), dietTab)
-  #rixTab <- contrasts.getDecodedSummary(psychPhen$OFTotalDistance, "RIX")
-  #rixRix_table[[pheno]] <- cbind(phenotype=rep(pheno,nrow(rixTab)), rixTab)
+  rixTab <- contrasts.getDecodedSummary(psychPhen$rix.test[[pheno]], "RIX")
+  rixRix_table[[pheno]] <- cbind(phenotype=rep(pheno,nrow(rixTab)), rixTab)
 }
 
 
-write.csv(do.call(rbind, summary_table), file.path(dir,"phenotype_analysis/allPheno_summarytable.csv"), row.names = F)
+write.csv(do.call(rbind, summary_table), file.path(dir,"phenotype_analysis/allPheno_summarytable2021"), row.names = F)
 
 
 
@@ -795,11 +844,11 @@ for(i in 1:length(ptypes)){
   pheno <- ptypes[i]
   
   ####
-  tempTable <- jags.getDecodedSummary(psychPhen[[pheno]]$mcmcObject, encoded, narrow=0.5, wide=0.95)
+  tempTable <- jags.getDecodedSummary(psychPhen$mcmcObject[[pheno]], encoded, narrow=0.5, wide=0.95)
   tempTable$Level <- factor(tempTable$Level, levels=tempTable$Level)
-  null_p <- data.frame(Level = names(psychPhen[[pheno]]$null.test$pval), 
-                       pval = psychPhen[[pheno]]$null.test$pval, 
-                       signif = psychPhen[[pheno]]$null.test$signif)
+  null_p <- data.frame(Level = rownames(psychPhen$null.test[[pheno]]), 
+                       pval = psychPhen$null.test[[pheno]]$pval, 
+                       signif = psychPhen$null.test[[pheno]]$signif)
   null_p$Level <- factor(null_p$Level, levels=tempTable$Level)
   null_p <- null_p[order(null_p$Level),]
   mergeTable <- merge(tempTable, null_p, by="Level")
@@ -812,12 +861,13 @@ for(i in 1:length(ptypes)){
   ####
   #dietTab <- contrasts.getDecodedSummary(psychPhen$OFTotalDistance, "Diet")
   #dietDiet_table[[pheno]] <- cbind(phenotype=rep(pheno,nrow(dietTab)), dietTab)
-  #rixTab <- contrasts.getDecodedSummary(psychPhen$OFTotalDistance, "RIX")
-  #rixRix_table[[pheno]] <- cbind(phenotype=rep(pheno,nrow(rixTab)), rixTab)
+  rixTab <- contrasts.getDecodedSummary(psychPhen$rix.test[[pheno]], "RIX")
+  rixRix_table[[pheno]] <- cbind(phenotype=rep(pheno,nrow(rixTab)), rixTab)
 }
 
 
-write.csv(do.call(rbind, summary_table), file.path("./","matnut_outputs/",'allPheno_summarytable.csv'), row.names = F)
+write.csv(do.call(rbind, summary_table), file.path(dir, "phenotype_analysis/out/allPheno_summarytable_022021.csv"), row.names = F)
+write.csv(do.call(rbind, rixRix_table), file.path(dir, "phenotype_analysis/out/rixRIX_summarytable_022021.csv"), row.names = F)
 
 
 #########
@@ -878,6 +928,7 @@ for(i in 1:length(ptypes)){
 ################
 matnut <- read.csv(file.path(dir, "matnut_main/AllPhenotypes_Matnut_use.csv"))
 
+
 matnut[grep("a", matnut$Reciprocal),"PO"] <- 0.5
 matnut[grep("b", matnut$Reciprocal),"PO"] <- -0.5
 matnut[which(matnut$PO == 0.5), "pof"] <- "+"
@@ -885,7 +936,7 @@ matnut[which(matnut$PO == -0.5), "pof"] <- "-"
 dietlabs <- data.frame(short=c("STD", "ME", "PD", "VDD"),
                        long =  c("Standard","LowProtein","MethylEnriched","VitaminDDeficient"))
 matnut$RIX <- factor(matnut$RIX, levels=c(1:4,6:10))
-matnut$Diet <- factor(matnut$Diet, levels=dietlabs$long)
+matnut$Diet <- factor(dietlabs$short[match(matnut$Diet, dietlabs$long)], levels=dietlabs$short)
 
 
 ### covariates ###
@@ -932,7 +983,7 @@ allparam <- c(variables, dispersions)
 allparam <- allparam[order(allparam)]
 matnut <- list(df=orderdat, parameters=allparam, ptypes=ptypes, encoded=encoded)
 
-saveRDS(matnut, file.path("./","matnut_outputs/",'matnut_data.rds'))
+saveRDS(matnut, file.path(dir,'phenotype_analysis/out/matnut_data_022021.rds'))
 # many of the following functions expect list of data with 1) data, 2) parameters, 3) phenotypes, 4) encoding
 
 

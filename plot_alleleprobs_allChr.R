@@ -13,7 +13,7 @@ dir <- "C:/Users/Kathie/Dropbox\ (ValdarLab)"
 ## allele probabilities for mnt and cegs
 alleleprobs_minimuga <- readRDS(file.path(dir, "mini/interp_rqtl_allChr_alleleprob_17mar2020.rds"))
 alleleprobs_4 = alleleprobs_minimuga[["4"]]
-alleleprobs_7 = alleleprobs_minimuga[["12"]]
+alleleprobs_7 = alleleprobs_minimuga[["7"]]
 alleleprobs_12 = alleleprobs_minimuga[["12"]]
 alleleprobs_minimuga = NULL
 ## all markers with probabilities
@@ -107,18 +107,20 @@ plot_hets_points$alpha = 1
 plot_hets_points$alpha[which(plot_hets_points$homog)] = 0.0001
 
 
-
-low = 59
-hi1=hi2= 63
+#low = 59
+#hi1=hi2= 63
 ribbon = data.frame(x=c(-Inf, Inf),
                     lo=low,  hi=min(hi1, hi2))
+
+hi1=hi2= 62.381640
+low = 59.228750
 
 ## classic CC colors
 cols = c("yellow", "gray", "pink", "blue", "deepskyblue", "forestgreen", "red", "purple")
 
 p = ggplot() + 
   geom_ribbon(data=ribbon, aes(ymin=lo, ymax=hi, x=x), fill="#a3752e", alpha=0.2) + 
-  geom_point(data=plot_hets_points, aes(x=Pup, y=pos, col=founder, alpha=alpha), size=0.5,shape=15) + 
+  geom_point(data=plot_hets_points, aes(x=Pup, y=pos, col=founder, alpha=alpha), size=1,shape=15) + 
   scale_colour_manual(values=cols) + 
   scale_alpha_continuous(NULL, NULL) + 
   scale_x_continuous(name ="CC-RIX", breaks=c(1:npup)+0.3, #96

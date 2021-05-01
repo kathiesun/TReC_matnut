@@ -1,6 +1,6 @@
 library(data.table)
-source("./matnut/plot.hpd_ks.R")
-source("./matnut/prediction_functions.R")
+source("plot.hpd_ks.R")
+source("prediction_functions.R")
 
 #######################
 # Generate all tables #

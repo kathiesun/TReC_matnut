@@ -142,7 +142,7 @@ stan_ase <- function(df, encoded=NULL,
     encoded <- unique(getEncoding(df, terms = unique(c(terms,"PUP.ID","SEQ.GENE","PUP_GENE"))))
   }
   
-  df$PUP.ID <- factor(df$PUP.ID, encoded$Level[which(encoded$Variable == "PUP.ID")])
+  df$PUP.ID <- factor(df$PUP.ID, encoded$Level[which(toupper(encoded$Variable) == "PUP.ID")])
   #data$RIX_DIR_DIET = paste(data$RRIX, data$DIR, data$DIET, sep="_")
   df %>% ungroup() %>% arrange(PUP.ID) -> df
   
@@ -169,17 +169,21 @@ stan_ase <- function(df, encoded=NULL,
     arrange(PUP.ID, SEQ.GENE) %>%
     ungroup() -> df
   
-  df %>% group_by(SEQ.GENE, PUP.ID) %>%
+  df %>% group_by(SEQ.GENE, PUP.ID, RECIPROCAL) %>%
     summarize(sum_CC_1 = sum(CC_1), sum_CC_2 = sum(CC_2), sumTot = sum(SUM)) %>%
     arrange(PUP.ID, SEQ.GENE) %>%
     left_join(merge_indP, by="PUP.ID") %>%
     left_join(merge_indG, by = c("SEQ.GENE", "PUP.ID")) -> gene_tot
 
+  use_gene=T
   if(use_gene){
     y_gk = gene_tot$sum_CC_1
     N_gk = gene_tot$sumTot
     indG = gene_tot$INDG
     indP = gene_tot$INDP
+    indPO = gene_tot$RECIPROCAL
+    df = gene_tot
+    df$PUP_GENE = paste(df$INDP,df$INDG, sep="_")
   } else {
     y_gk <- df$CC_1
     N_gk <- df$SUM
@@ -200,35 +204,36 @@ stan_ase <- function(df, encoded=NULL,
   indP    = model.matrix(~ 0 + PUP.ID, df)     # + DietRIX
   indG    = model.matrix(~ 0 + SEQ.GENE, df)     # + DietRIX
   #indRIX  = model.matrix(~ 0 + RIX, df)     # + DietRIX
-  indGP   = model.matrix(~ 0 + PUP_GENE, df)     # + DietRIX
+  #indGP   = model.matrix(~ 0 + PUP_GENE, df)     # + DietRIX
   
   
-  indDiet = model.matrix(~ 0 + DIET, df)     # + DietRIX
-  nDiet   = ncol(indDiet)
-  C_diet  = as.matrix(get(paste0("C_diet_",nDiet)))
-  XC      = indDiet %*% C_diet
+  #indDiet = model.matrix(~ 0 + DIET, df)     # + DietRIX
+  #nDiet   = ncol(indDiet)
+  #C_diet  = as.matrix(get(paste0("C_diet_",nDiet)))
+  #XC      = indDiet %*% C_diet
   
-  indDR   = model.matrix(~ 0 + DIETRIX, df)     # + DietRIX
-  nDR     = ncol(indDR)
-  indDR   = indDR[,-ncol(indDR)]
+  #indDR   = model.matrix(~ 0 + DIETRIX, df)     # + DietRIX
+  #nDR     = ncol(indDR)
+  #indDR   = indDR[,-ncol(indDR)]
 
   map_gp_p = model.matrix(~ 0 + PUP.ID, unique(df %>% select(SEQ.GENE, PUP.ID, PUP_GENE)))
   map_gp_g = model.matrix(~ 0 + SEQ.GENE, unique(df %>% select(SEQ.GENE, PUP.ID, PUP_GENE)))
   map_g_gp = t(map_gp_g)
   map_g_p = map_g_gp %*% map_gp_p
-  ind_SPO = (t(indGP)%*%as.matrix(df$PO,ncol=1))
-  ind_SPO = unique(df %>% select(PUP_GENE, PO))$PO
+  #ind_SPO = (t(indGP)%*%as.matrix(df$PO,ncol=1))
+  #ind_SPO = unique(df %>% select(PUP_GENE, PO))$PO
   ind_SPO = unique(df %>% select(PUP.ID, PO))$PO
   
   standat <-  list(N           = length(y_gk),
-                   y_gk        = y_gk, 
-                   N_gk        = N_gk,
+                   y           = y_gk, 
+                   W           = N_gk,
                    nP          = nP,
-                   indP        = indP,
+                   X           = matrix(rep(1, length(y_gk)), ncol=1),
+                   #indP        = indP,
                    nG          = nG,
                    indG        = indG,
                    nGP         = nGP,
-                   indGP       = indGP,
+                   #indGP       = indGP,
                    map_gp_p    = map_gp_p,
                    map_gp_g    = map_gp_g,
                    map_g_p     = map_g_p,
@@ -241,7 +246,9 @@ stan_ase <- function(df, encoded=NULL,
   thin=max(iter/1000,1)
   
   fileName <- stanMod
-  #fileName <- "ase_mu_g_regr.stan"
+  fileName <- "ase_mu_g_regr.stan"
+  fileName <- "ase_beta_binom_disperse_test.stan"
+  
   
 
   stan_code <- readChar(fileName, file.info(fileName)$size)
@@ -273,6 +280,7 @@ run_stan_regress <- function(data_kmers,
     testData <- data_kmers %>% filter(Pup.ID %in% testPups)
     chr = unique(testData$seq.Chromosome)
     terms <- c("dir", "Diet", "DietRIX","RRIX", "PODIETRIX")
+    terms=NULL
     if(!is.null(cond)){
       testData$PORIX = testData$RIX
       testData$PODIETRIX = paste(testData$DietRIX, testData$dir, sep="_")
@@ -310,8 +318,8 @@ run_stan_regress <- function(data_kmers,
       testData$pup_gene = factor(paste(testData$Pup.ID, testData$seq.Gene, sep="_"))
     }
     
-    encoded <- unique(getEncoding(testData, terms = unique(c(terms,"Pup.ID","seq.Gene","pup_gene"))))
-    
+    encoded <- unique(getEncoding(testData, terms = unique(c(terms,"Pup.ID","seq.Gene"))))
+    #,"pup_gene"
     reg[[paste0("rix_",i)]] = list()
     if(stan){
       reg[[paste0("rix_",i)]]$stan = stan_ase(df=testData, encoded=encoded, 

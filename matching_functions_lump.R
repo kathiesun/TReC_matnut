@@ -1,8 +1,8 @@
 source("matching.R")
-source("./matnut/summary_functions.R")
-source("./lm/formulaWrapper.R")
-source("./matnut/prediction_functions.R")
-source("./matnut/tables_n_plots.R")
+source("summary_functions.R")
+source("formulaWrapper.R")
+source("prediction_functions.R")
+source("tables_n_plots.R")
 options(mc.cores = parallel::detectCores())
 library(bayesplot)
 library(rstan)
@@ -13,7 +13,8 @@ match.multimp <- function(data, matchon, matchoff, idcol="ID", N=10,
                           randvar = NA, fixvar = NA, tryLam = 1, Nclust = 2, 
                           chains=1, n.iter=30000, thin=10, clust = NULL, 
                           encoded=NA, allparam=NA, ptypes=NA, 
-                          sq=F, fixPO = T, fixClust = T, p="p", beta=T){
+                          sq=F, fixPO = T, fixClust = T, p="p", beta=T,
+                          stan=F){
   matched_df <- list()
   multimp <- list()
   plots = list()
@@ -161,7 +162,7 @@ match.multimp <- function(data, matchon, matchoff, idcol="ID", N=10,
       
       lmerobj <- BC.model(y.mat = y.mat, data=use_match, indvariable= "~ 1", 
                           transformParams = getMatnutTransformParams(tryLam = tryLam, normd = T))
-      use_match = use_match %>% rename("orig_y"="y")
+      use_match = use_match %>% dplyr::rename("orig_y"="y")
       use_match = cbind(use_match, data.frame(lmerobj$y.transform[[1]]))
       
       matched_df[[ptypes[i]]][[j]] = use_match
@@ -210,31 +211,35 @@ match.multimp <- function(data, matchon, matchoff, idcol="ID", N=10,
       reg.jags <- jags.model(textConnection(modelFin), data=dataList, n.chains = 1, n.adapt = round(n.iter/5))
       update(reg.jags, n.iter=round(n.iter/5))
       fit_jags <- coda.samples(reg.jags, variable.names = paramUse, thin=thin, n.iter=n.iter)
-      
-      nK = 3
-      #######################
-      initf <- function(chain_id = 1) {
-        list(sigma = 1, 
-             mu_a = c(0.01),
-             p = matrix(1/nK, nRIX, nK),
-             mu_a_sq = 0.01^2,
-             mu_a_abs = 0.01)
-             #p = c(1/2, 1/2),
-             #muOfRIX = rep(0, dataList$nRIX))
-      } 
-      
-      n_chains <- 1
-      init_ll <- lapply(1:n_chains, function(id) initf(chain_id = id))
-      fit_stan[[j]] = stan(file="matnut/phenModel_discrete.stan", data=c(dataList, nK=nK), init = init_ll,
-                           iter=n.iter, chains=n_chains, thin=thin, cores = 2)
-      #post_stan <- as.array(fit_stan)
-      #relab = relabel(dataList=dataList, fit=fit, tau_mu0, tau_mua)
-      #relabs = relabel_stephens(dataList, fit)
-      #fit[[1]] = as.mcmc(data.frame(apply(relab$mu_out, 2, as.mcmc)))
       matched_jags[[j]] = as.mcmc.list(fit_jags)
       
       multimp[[ptypes[i]]]$trans[[j]] = lmerobj
-      #multimp[[ptypes[i]]]$clusters[[j]] = relab$clusters
+      
+      if(stan){
+        nK = 3
+        #######################
+        initf <- function(chain_id = 1) {
+          list(sigma = 1, 
+               mu_a = c(0.01),
+               p = matrix(1/nK, nRIX, nK),
+               mu_a_sq = 0.01^2,
+               mu_a_abs = 0.01)
+          #p = c(1/2, 1/2),
+          #muOfRIX = rep(0, dataList$nRIX))
+        } 
+          n_chains <- 1
+          init_ll <- lapply(1:n_chains, function(id) initf(chain_id = id))
+          fit_stan[[j]] = stan(file="../phenModel_discrete.stan", data=c(dataList, nK=nK), init = init_ll,
+                               iter=n.iter/10, chains=n_chains, thin=thin)
+          #post_stan <- as.array(fit_stan)
+        
+        #relab = relabel(dataList=dataList, fit=fit, tau_mu0, tau_mua)
+        #relabs = relabel_stephens(dataList, fit)
+        #fit[[1]] = as.mcmc(data.frame(apply(relab$mu_out, 2, as.mcmc)))
+
+        #multimp[[ptypes[i]]]$clusters[[j]] = relab$clusters
+      }
+
     }
     #browser()
     
@@ -289,8 +294,8 @@ make_model = function(tau_mu0, tau_mua, beta=F, sq=F,
       m2 = paste("for (r in 1:nRIX) {
     muOfRIXsq[r] = clust[r]*mu_a_sq
     #muOfRIXsq[r] = pow( muOfRIX[r], 2)
-    #muOfRIX[r] = clust[r]*mu_a
-    muOfRIX[r] = pow( muOfRIXsq[r], 0.5)
+    muOfRIX[r] = clust[r]*mu_a
+    #muOfRIX[r] = pow( muOfRIXsq[r], 0.5)
     clust[r] ~ dbin(",p,", 1)      #
     }")
       m3 = paste0("## Prior\n",

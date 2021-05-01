@@ -65,7 +65,8 @@ annot_genes = annot %>% filter(V15 == "gene_name") %>%
   distinct()
 
 colnames(annot_genes) = c("Chr","Start","End","Strand","Gene.ID","Gene.Name")
-annot_genes = annot_genes %>% mutate(Start = as.numeric(paste(Start)), End = as.numeric(paste(End)))
+annot_genes = annot_genes %>% mutate(Start = as.numeric(paste(Start)), End = as.numeric(paste(End))) %>%
+  filter(Chr %in% 1:19)
 # 
 if(length(which(duplicated(annot_genes$Gene.Name))) > 0){
   annot_genes = annot_genes[-which(duplicated(annot_genes$Gene.Name)),]
@@ -96,9 +97,8 @@ rownames(ase_total_counts) = ase_total_counts$X
 ase_total_counts$X = NULL
 
 
-
 dds_list = res_list = het_genes = list()
-for(r in levels(matnut$RIX)){
+for(r in levels(colData$RIX)){
   colData_tmp = colData %>% filter(RIX == r)
   colData_tmp$Behavior.Batch = factor(colData_tmp$Behavior.Batch)
   colData_tmp$Breeding.Batch = factor(colData_tmp$Breeding.Batch)
@@ -153,6 +153,8 @@ for(r in levels(matnut$RIX)){
   mod  <- model.matrix(as.formula(paste("~ 0 +", base)), colData(dds))
   mod0 <- model.matrix(~   1                           , colData(dds))
   n.sv = num.sv(dat, mod, method="be") + 2
+
+  #n.sv = 5
   #adj_dat = mouthwash(Y=t(dat), X=mod, k=n.sv)
   #resAsh <- lfcShrink(dds, coef=2, type="ashr")
   svseq <- svaseq(dat, mod, mod0, n.sv = n.sv)  #
@@ -172,23 +174,23 @@ for(r in levels(matnut$RIX)){
   design(ddssva) <- as.formula(paste(sv_base, base))
   dds = ddssva
   
-  #tmp_dds <- DESeq(dds)
-  #tmp_res = results(tmp_dds)
-  #tmp_p = tmp_res$pvalue[which(tmp_res$pvalue > quantile(tmp_res$pvalue, 0.25) & 
-  #                             tmp_res$pvalue < quantile(tmp_res$pvalue, 0.75))]
-  #tri_dist = function(theta, p_vals){
-  #  sum(prod(2-(theta/2)+(theta*p_vals)))
-  #}
+  tmp_dds <- DESeq(dds)
+  tmp_res = results(tmp_dds)
+  tmp_p = tmp_res$pvalue[which(tmp_res$pvalue > quantile(tmp_res$pvalue, 0.25) & 
+                               tmp_res$pvalue < quantile(tmp_res$pvalue, 0.75))]
+  tri_dist = function(theta, p_vals){
+    sum(prod(2-(theta/2)+(theta*p_vals)))
+  }
   #op_test = optim(par=0, fn=tri_dist, p_vals=sort(tmp_p), method="Brent", lower=-6, upper=6)
   
   #hist(tmp_res$pvalue)
   
-  dds_list[[r]]
   #ft = fdrtool(x = tmp_res$pvalue, statistic = "pvalue")
   #pval.estimate.eta0(ft$pval, method="adaptive")
   #print(identical(tmp_res$pvalue, ft$pval))
-  #hist(tmp_res$pvalue, main = paste("Raw p-values for RIX",r))
-  #res_list[[r]] = tmp_res
+  hist(tmp_res$pvalue, main = paste("Raw p-values for RIX",r))
+  dds_list[[r]] = tmp_dds
+  res_list[[r]] = tmp_res
 }
 
 
@@ -196,7 +198,7 @@ for(r in levels(matnut$RIX)){
 #res <- results(dds)
 
 #saveRDS(dds_list, file.path(dir,"de_results/dds_list_allReg_sepRIX_30jan2021.rds"))
-dds_list_full = readRDS(file.path(dir,"de_results/dds_list_allReg_sepRIX_30jan2021.rds"))
+#dds_list = readRDS(file.path(dir,"de_results/dds_list_bePlus2_sepRIX_30jan2021.rds"))
 
 POres_list = lapply(dds_list, function(x) results(x, name="PO"))
 POres_Ordered <- lapply(POres_list, function(x) x[order(x$pvalue),])
@@ -204,7 +206,19 @@ sig_genes_list = lapply(POres_Ordered, function(x) x[which(x$padj < 0.1),])
 #sig_genes_short = lapply(sig_genes_list, function(x) 
 #  if(length(grep("Gm|Rik|[.]", x)) > 0) x[-grep("Gm|Rik|[.]", x)])
 deseq_sig = sort(table(unlist(lapply(POres_Ordered, function(x) rownames(x[which(x$padj < 0.1),])))), decreasing = T)
+lapply(POres_list, function(x) hist(x$pvalue))
+n_genes = length(unique(unlist(lapply(POres_list, rownames))))
+good_rix = c("1","3","4","6","9","10")
+use_genes = names(deseq_sig)
+res_use_genes = lapply(POres_list, function(x) x[which(rownames(x) %in% use_genes),])
+for(i in 1:length(res_use_genes)){ 
+  res_use_genes[[i]]$rix = names(POres_list)[i]
+  res_use_genes[[i]]$gene = rownames(res_use_genes[[i]])
+}
+res_use_genes = data.frame(do.call("rbind", res_use_genes))
 
+res_use_genes %>% arrange(padj) %>% 
+  left_join(annot_genes, by=c("gene"="Gene.Name"))
 for(i in names(sig_genes_list)){
   if(nrow(sig_genes_list[[i]]) > 0){
     sig_genes_list[[i]] = data.frame(sig_genes_list[[i]])
@@ -217,11 +231,15 @@ for(i in names(sig_genes_list)){
 }
 
 sig_genes_df = do.call("rbind", sig_genes_list)
-
+sig_genes_df$ie = ifelse(sig_genes_df$gene %in% ie_genes$mgi_symbol, T, F)
 lab = read.csv(file.path(dir, "matnut_main/CC_labels_paternity.csv"))
 
 which_homs_list = pmat_list = list()
 
+sig_genes_df %>% filter(gene %in% use_genes) %>% arrange(gene, padj)
+
+#use_genes = c("Meg3", "Wars", "Ndn", "Ywhaz", "Peg3", "Airn", 
+#              "Adam23", "Arl6ip1", "Pnmal1", "Atg4b", "Slit1", "Wdfy2")
 for(g in unique(sig_genes_df$gene)){
   p_tmptmp = lapply(POres_list, function(x) x[which(rownames(x) == g),])
   p_tmp = do.call("rbind", p_tmptmp)
@@ -285,10 +303,28 @@ for(g in unique(sig_genes_df$gene)){
   }
   
 }
-
+rix_6_genes = use_genes = c("Gm11410","Gm28438","Gm11408","Ndn")
 
 results = list.files(file.path(dir,"/de_results/het_regions/"), full.names = T)
+
 which_homs_pre = lapply(results[grep("which_homs_list", results)], readRDS)
+haps_per_gene = list()
+for(i in 1:length(which_homs_pre)){
+  haps_per_gene = c(haps_per_gene, which_homs_pre[[i]])
+}
+
+for(i in 1:length(haps_per_gene)){ haps_per_gene[[i]]$gene = names(haps_per_gene)[i]}
+
+haps_per_gene = do.call("rbind",haps_per_gene)
+sig_genes_df = sig_genes_df %>% left_join(haps_per_gene, by=c("gene","rix"="RIX"))
+
+
+res_use_genes = res_use_genes %>% left_join(haps_per_gene, by=c("gene","rix"="RIX"))
+write.csv(sig_genes_df %>% filter(rix == 6) %>%
+  left_join(annot_genes, by=c("gene"="Gene.Name")) %>%
+  left_join(haps_per_gene %>% filter(RIX == 6), by=c("gene")), file.path(dir, "check_RIX6_genes.csv"))
+
+sig_genes_df %>% arrange(padj)
 pmat_pre = lapply(results[grep("pmat_list", results)], readRDS)
 
 which_homs_list = pmat_list = list()
@@ -302,10 +338,14 @@ for(i in 1:length(which_homs_pre)){
     
   }
 }
-  
-
+names(which_homs_list) = names(pmat_list)
 pmat_df = do.call("rbind", pmat_list)
 pmat_df$gene = rownames(pmat_df)
+
+#######################################################
+###        Fisher's test  & combined p-vals         ###     
+#######################################################
+
 fisher_ps = apply(pmat_df, 1, function(x)
   c(p_het = pchisq(as.numeric(x["het_stat"]), df=(as.numeric(x["het_n"])*2),lower.tail = F),
     p_hom = pchisq(as.numeric(x["hom_stat"]), df=(as.numeric(x["hom_n"])*2),lower.tail = F)))
@@ -314,15 +354,26 @@ pmat_df = cbind(pmat_df, t(fisher_ps))
 fdr_het = fdrtool(x = pmat_df$p_het, statistic = "pvalue")
 fdr_hom = fdrtool(x = pmat_df$p_hom, statistic = "pvalue")
 
-pmat_df$het_padj_qval = as.numeric(fdr_het$qval)
+# pmat_df$het_padj_qval = as.numeric(fdr_het$qval)
 pmat_df$het_padj_fdr  = as.numeric(fdr_het$lfdr)
 pmat_df$het_padj = as.numeric(p.adjust(pmat_df$p_het, method = "BH"))
 pmat_df$hom_padj_qval = as.numeric(fdr_hom$qval)
 pmat_df$hom_padj_fdr  = as.numeric(fdr_hom$lfdr)
 pmat_df$hom_padj = as.numeric(p.adjust(pmat_df$p_hom, method = "BH"))
 
-pmat_sig = pmat_df %>% arrange(desc(het_stat)) %>% filter(het_padj_fdr < 0.05)
+pmat_sig = pmat_df %>% arrange(desc(het_stat)) %>% filter(het_padj_fdr < 0.1)
 genes = rownames(pmat_sig)
+length_genes = length(unique(unlist(lapply(dds_list, rownames))))
+
+a = length(which(names(deseq_sig) %in% ie_genes$mgi_symbol))
+c = length(ie_genes$mgi_symbol) - a
+b = length(deseq_sig) - a 
+d = length_genes - c - a - b
+
+fisher.test(matrix(c(a,b,c,d), nrow=2, byrow = T))
+(a/b)/(c/d)
+
+
 genes = unique(unlist(lapply(sig_genes_short, function(x) x[1:min(5,length(x))])))
 genes = unique(unlist(sig_genes_short))  ## 205
 genes = unique(unlist(sig_genes_list))   ## 327
@@ -332,9 +383,9 @@ keep_genes = imp_perc$Gene.Name[which(imp_perc$Gene.Name %in% genes)]
 keep_genes = c("Bcl2l1", "Sh3bgr", "Bag3", "Idh3a", "Adam23", "R3hdm4", "Prkd1", "Grik5")
 keep_genes = genes
 geneResDf_list = list()
-
-for(i in 1:length(keep_genes)){
-  geneUse = keep_genes[i]        #sig_genes_short[[1]][3]
+use_genes = use_genes$old
+for(i in 1:length(use_genes)){
+  geneUse = use_genes[i]        #sig_genes_short[[1]][3]
   geneResDf_list[[geneUse]] = list()
   plotCts = do.call("rbind", lapply(dds_list, function(x) 
     if(geneUse %in% rownames(x)){
@@ -350,25 +401,27 @@ for(i in 1:length(keep_genes)){
               xmin = -Inf, xmax = Inf, 
               ymin = -Inf, ymax = Inf, alpha=0.01) +
     scale_fill_grey() + 
-    geom_point(data=plotCts, aes(x=DamLine_NewCC_ID, y=count, col=Diet),
+    geom_point(data=plotCts, aes(x=SireLine_NewCC_ID, y=count, col=Diet),
                position = position_jitter(width = 0.15)) + 
     theme_bw() + 
-    ggtitle(geneUse) + 
-    facet_wrap(~CCs, scales="free_x")
-  geneResDf_tmp = data.frame(do.call("rbind", lapply(POres_list, function(x) x[which(rownames(x) == geneUse),])))
+    ggtitle(geneUse) + xlab("Sire CC Strain") + ylab("Normalized Counts") + 
+    facet_wrap(~CCs, scales="free")
+  geneResDf_tmp = lapply(POres_list, function(x) data.frame(x[which(rownames(x) == geneUse),]))
   geneResDf = data.frame(do.call("rbind", geneResDf_tmp))
-  geneResDf$gene = rownames(geneResDf)[1]
-  geneResDf$rix = names(geneResDf_tmp)
+  geneResDf$gene = geneUse
+  geneResDf$rix = names(geneResDf_tmp)[which(unlist(lapply(geneResDf_tmp, nrow)) > 0)]
   rownames(geneResDf) = NULL
+  #geneResDf %>% left_join(res_use_genes, by=c("rix","gene"))
   #dfTitle = unlist(lapply(POres_list, function(x) unlist(strsplit(x@elementMetadata$description[2],":",))[c(F,T)]))
   #rownames(geneResDf) = gsub(" ","",dfTitle)
-  geneResDf_list[[geneUse]]$df = geneResDf
+  geneResDf_list[[geneUse]]$df = res_use_genes %>% filter(gene == geneUse)
+  
 }
 
 
-pdf(file.path(dir, "/trec/deseq2_signif_fisher_genes_11feb2021.pdf"))
+pdf(file.path(dir, "/trec/ndn_reprint.pdf"))
 for(i in 1:length(geneResDf_list)){
-  print(geneResDf_list[[i]]$plot)
+  print(geneResDf_list$Ndn$plot)
 }
 dev.off()
 

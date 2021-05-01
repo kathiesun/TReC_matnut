@@ -1,0 +1,18 @@
+
+model {
+## sampling
+for (i in 1:N){
+   y[i] ~ dbetabin(p_g[i]*theta, (1-p_g[i])*theta, n[i])
+}
+## priors
+for(i in 1:N){
+  for (g in 1:nG){
+     p_g[indG[indP[i]]] ~ ilogit(X[i,] %*% betas)
+  }
+}
+
+theta ~ dgamma(a_s, b_s)
+betas ~ dt(mu, tau, 10)
+
+}
+
